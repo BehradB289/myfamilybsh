@@ -1,860 +1,858 @@
-import React, { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously,
-  onAuthStateChanged
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  deleteDoc, 
-  updateDoc, 
-  doc, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  serverTimestamp,
-  setDoc
-} from 'firebase/firestore';
-import { 
-  Home, Calendar, CheckSquare, ShoppingCart, DollarSign, 
-  MessageCircle, Wifi, Book, Utensils, 
-  Wrench, Repeat, Trash2, 
-  ChevronRight, Smartphone, Sun, Moon,
-  HeartPulse, Loader2,
-  Clock, CheckCircle2, 
-  ArrowUpCircle, ArrowDownCircle, Coffee, 
-  UtensilsCrossed, Pill,
-  TrendingUp, TrendingDown,
-  PieChart
-} from 'lucide-react';
-
-// --- تنظیمات فایربیس (کد دریافتی از سایت فایربیس را اینجا جایگزین کنید) ---
-const firebaseConfig = {
-  apiKey: "AIzaSyAhEB7Kax9LZi_16JcZ7dWyYsUIR6v-y0Y",
-  authDomain: "family-app-9da43.firebaseapp.com",
-  projectId: "family-app-9da43",
-  storageBucket: "family-app-9da43.firebasestorage.app",
-  messagingSenderId: "48481240206",
-  appId: "1:48481240206:web:cb59f13e5ac7e0ff3b75df",
-  measurementId: "G-QPM2GB57Y6"
-};
-
-let app, auth, db;
-try {
-  // این خط برای محیط‌های خاص است، در لوکال هاست معمولی کانفیگ بالا خوانده می‌شود
-  const config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
-  app = initializeApp(config);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (error) {
-  console.log("Firebase Init Error");
-}
-
-// --- اعضای خانواده ---
-const FAMILY_MEMBERS = [
-  { id: 'dad', name: 'بهزاد (پدر)', avatar: '👨🏻', color: 'bg-blue-600', ring: 'ring-blue-200' },
-  { id: 'mom', name: 'شهرزاد (مادر)', avatar: '👩🏻', color: 'bg-pink-600', ring: 'ring-pink-200' },
-  { id: 'behrad', name: 'بهراد (پسر ارشد)', avatar: '🧑🏻', color: 'bg-indigo-600', ring: 'ring-indigo-200' },
-  { id: 'shahrad', name: 'شهراد (پسر کوچک)', avatar: '👶🏻', color: 'bg-green-500', ring: 'ring-green-200' },
-];
-
-const APPS = [
-  { id: 'calendar', name: 'تقویم و رویداد', icon: <Calendar />, color: 'bg-purple-500' },
-  { id: 'tasks', name: 'کارها و امتیاز', icon: <CheckSquare />, color: 'bg-blue-500' },
-  { id: 'shopping', name: 'لیست خرید', icon: <ShoppingCart />, color: 'bg-pink-500' },
-  { id: 'finance', name: 'مدیریت مخارج', icon: <DollarSign />, color: 'bg-emerald-500' },
-  { id: 'health', name: 'دارو و سلامت', icon: <HeartPulse />, color: 'bg-red-500' },
-  { id: 'notes', name: 'یادداشت‌', icon: <Book />, color: 'bg-amber-500' },
-  { id: 'wifi', name: 'مدیریت نت/گیم', icon: <Wifi />, color: 'bg-indigo-500' },
-  { id: 'meals', name: 'برنامه غذایی', icon: <Utensils />, color: 'bg-orange-500' },
-  { id: 'chat', name: 'چت روم', icon: <MessageCircle />, color: 'bg-teal-500' },
-  { id: 'repair', name: 'تعمیرات منزل', icon: <Wrench />, color: 'bg-stone-500' },
-];
-
-export default function FamilyOS() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [activeApp, setActiveApp] = useState(null);
-  const [theme, setTheme] = useState('light');
-  const [isAuthReady, setIsAuthReady] = useState(false);
-
-  useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setIsAuthReady(true);
-      } else {
-        signInAnonymously(auth).catch((error) => console.error(error));
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const switchUser = () => {
-    setCurrentUser(null);
-    setActiveApp(null);
-  };
-
-  if (!isAuthReady) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 font-[vazir,sans-serif] text-slate-500 gap-4">
-        <Loader2 className="animate-spin text-indigo-600" size={48} />
-        <p>در حال اتصال امن به خانه...</p>
-      </div>
-    );
-  }
-
-  if (!currentUser) return <UserSelectScreen onSelect={setCurrentUser} />;
-
-  return (
-    <div className={`h-screen w-full overflow-hidden flex flex-col font-[vazir,sans-serif] ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-800'}`} dir="rtl">
-      
-      {/* هدر */}
-      <header className={`px-6 py-4 flex justify-between items-center z-20 ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white/80'} backdrop-blur-md sticky top-0 border-b border-slate-200/50`}>
-        <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveApp(null)}>
-          <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
-            <Home size={20} />
-          </div>
-          <div>
-            <h1 className="font-black text-lg leading-tight tracking-tight">Family OS</h1>
-            <p className="text-xs opacity-60 font-medium">پنل {currentUser.name}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-full hover:bg-slate-200/50 transition-colors">
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-          
-          <button onClick={switchUser} className="flex items-center gap-2 bg-slate-200/50 hover:bg-red-100 text-slate-600 hover:text-red-600 px-3 py-1.5 rounded-full transition-all text-xs font-bold">
-            <Repeat size={14} />
-            <span className="hidden md:inline">تغییر کاربر</span>
-          </button>
-          
-          <div className={`w-10 h-10 rounded-full ${currentUser.color} p-0.5 border-2 border-white shadow-md`}>
-             <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xl overflow-hidden">
-               {currentUser.avatar}
-             </div>
-          </div>
-        </div>
-      </header>
-
-      {/* محتوای اصلی */}
-      <main className="flex-1 overflow-hidden relative">
-        {activeApp ? (
-          <AppWindow app={activeApp} close={() => setActiveApp(null)} user={currentUser} theme={theme} />
-        ) : (
-          <Dashboard openApp={setActiveApp} user={currentUser} theme={theme} />
-        )}
-      </main>
-
-    </div>
-  );
-}
-
-// --- صفحات ---
-
-function UserSelectScreen({ onSelect }) {
-  return (
-    <div className="h-screen bg-slate-50 font-[vazir,sans-serif] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      <div className="z-10 text-center w-full max-w-3xl">
-        <h1 className="text-3xl font-black text-slate-800 mb-2">خانواده ما ❤️</h1>
-        <p className="text-slate-500 mb-10">برای ورود روی عکس خود کلیک کنید</p>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {FAMILY_MEMBERS.map((member) => (
-            <button
-              key={member.id}
-              onClick={() => onSelect(member)}
-              className={`bg-white p-4 py-8 rounded-3xl border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center gap-4 group`}
-            >
-              <div className={`w-20 h-20 rounded-full ${member.color} flex items-center justify-center text-4xl shadow-lg ring-4 ring-offset-2 ${member.ring} group-hover:scale-110 transition-transform`}>
-                {member.avatar}
-              </div>
-              <span className="font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{member.name.split(' ')[0]}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Dashboard({ openApp, user, theme }) {
-  const [time, setTime] = useState(new Date());
-  // برای نمودار داشبورد
-  const [financeSummary, setFinanceSummary] = useState({ income: 0, expense: 0 });
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 60000);
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; }
+        /* انیمیشن‌ها */
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.5s ease-out; }
+        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-slide-up { animation: slide-up 0.3s ease-out; }
+    </style>
     
-    // گرفتن خلاصه مالی برای داشبورد
-    if(!db) return;
-    const unsub = onSnapshot(collection(db, 'finance'), (snap) => {
-        let inc = 0, exp = 0;
-        snap.docs.forEach(doc => {
-            const d = doc.data();
-            if(d.type === 'income') inc += d.amount;
-            else exp += d.amount;
-        });
-        setFinanceSummary({ income: inc, expense: exp });
-    });
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
 
-    return () => {
-        clearInterval(timer);
-        unsub();
-    }
-  }, []);
-
-  // محاسبه درصد برای نوار وضعیت مالی در داشبورد
-  const total = Math.max(financeSummary.income + financeSummary.expense, 1);
-  const incPercent = (financeSummary.income / total) * 100;
-  const expPercent = (financeSummary.expense / total) * 100;
-
-  return (
-    <div className="h-full overflow-y-auto p-4 md:p-8 space-y-8 animate-fade-in pb-24">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <script type="text/babel" data-type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
+        import { 
+            getFirestore, collection, addDoc, deleteDoc, updateDoc, 
+            doc, query, orderBy, onSnapshot, serverTimestamp, setDoc 
+        } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
         
-        {/* کارت خوش‌آمد و خلاصه */}
-        <div className={`md:col-span-2 p-6 rounded-3xl ${theme === 'dark' ? 'bg-indigo-900/40 border-indigo-500/30' : 'bg-white border-indigo-100'} border shadow-xl shadow-indigo-500/5 relative overflow-hidden flex flex-col justify-between`}>
-          <div>
-            <h2 className="text-3xl font-black mb-2">سلام {user.name.split(' ')[0]} 👋</h2>
-            <p className="opacity-70 text-sm mb-4">وضعیت کلی خانه در یک نگاه:</p>
+        // ایمپورت آیکون‌ها از نسخه مرورگر Lucide
+        import { 
+            Home, Calendar, CheckSquare, ShoppingCart, DollarSign, 
+            MessageCircle, Wifi, Book, Utensils, Wrench, Repeat, Trash2, 
+            ChevronRight, Smartphone, Sun, Moon, HeartPulse, Loader2,
+            Clock, CheckCircle2, ArrowUpCircle, ArrowDownCircle, Coffee, 
+            UtensilsCrossed, Pill, TrendingUp, TrendingDown, PieChart
+        } from 'https://esm.sh/lucide-react@0.263.1?dev';
+
+        const { useState, useEffect } = React;
+
+        // --- تنظیمات فایربیس ---
+       const firebaseConfig = {
+         apiKey: "AIzaSyAhEB7Kax9LZi_16JcZ7dWyYsUIR6v-y0Y",
+          authDomain: "family-app-9da43.firebaseapp.com",
+         projectId: "family-app-9da43",
+         storageBucket: "family-app-9da43.firebasestorage.app",
+         messagingSenderId: "48481240206",
+         appId: "1:48481240206:web:cb59f13e5ac7e0ff3b75df",
+         measurementId: "G-QPM2GB57Y6"
+       };
+
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (error) {
+            console.log("Firebase Init Error", error);
+        }
+
+        // --- اعضای خانواده ---
+        const FAMILY_MEMBERS = [
+            { id: 'dad', name: 'بهزاد (پدر)', avatar: '👨🏻', color: 'bg-blue-600', ring: 'ring-blue-200' },
+            { id: 'mom', name: 'شهرزاد (مادر)', avatar: '👩🏻', color: 'bg-pink-600', ring: 'ring-pink-200' },
+            { id: 'behrad', name: 'بهراد (پسر ارشد)', avatar: '🧑🏻', color: 'bg-indigo-600', ring: 'ring-indigo-200' },
+            { id: 'shahrad', name: 'شهراد (پسر کوچک)', avatar: '👶🏻', color: 'bg-green-500', ring: 'ring-green-200' },
+        ];
+
+        const APPS = [
+            { id: 'calendar', name: 'تقویم و رویداد', icon: <Calendar />, color: 'bg-purple-500' },
+            { id: 'tasks', name: 'کارها و امتیاز', icon: <CheckSquare />, color: 'bg-blue-500' },
+            { id: 'shopping', name: 'لیست خرید', icon: <ShoppingCart />, color: 'bg-pink-500' },
+            { id: 'finance', name: 'مدیریت مخارج', icon: <DollarSign />, color: 'bg-emerald-500' },
+            { id: 'health', name: 'دارو و سلامت', icon: <HeartPulse />, color: 'bg-red-500' },
+            { id: 'notes', name: 'یادداشت‌', icon: <Book />, color: 'bg-amber-500' },
+            { id: 'wifi', name: 'مدیریت نت/گیم', icon: <Wifi />, color: 'bg-indigo-500' },
+            { id: 'meals', name: 'برنامه غذایی', icon: <Utensils />, color: 'bg-orange-500' },
+            { id: 'chat', name: 'چت روم', icon: <MessageCircle />, color: 'bg-teal-500' },
+            { id: 'repair', name: 'تعمیرات منزل', icon: <Wrench />, color: 'bg-stone-500' },
+        ];
+
+        function FamilyOS() {
+            const [currentUser, setCurrentUser] = useState(null);
+            const [activeApp, setActiveApp] = useState(null);
+            const [theme, setTheme] = useState('light');
+            const [isAuthReady, setIsAuthReady] = useState(false);
+
+            useEffect(() => {
+                if (!auth) return;
+                const unsubscribe = onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        setIsAuthReady(true);
+                    } else {
+                        signInAnonymously(auth).catch((error) => console.error(error));
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const switchUser = () => {
+                setCurrentUser(null);
+                setActiveApp(null);
+            };
+
+            if (!isAuthReady) {
+                return (
+                    <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 font-[vazir,sans-serif] text-slate-500 gap-4">
+                        <Loader2 className="animate-spin text-indigo-600" size={48} />
+                        <p>در حال اتصال امن به خانه...</p>
+                    </div>
+                );
+            }
+
+            if (!currentUser) return <UserSelectScreen onSelect={setCurrentUser} />;
+
+            return (
+                <div className={`h-screen w-full overflow-hidden flex flex-col font-[vazir,sans-serif] ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-800'}`} dir="rtl">
+                
+                {/* هدر */}
+                <header className={`px-6 py-4 flex justify-between items-center z-20 ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white/80'} backdrop-blur-md sticky top-0 border-b border-slate-200/50`}>
+                    <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setActiveApp(null)}>
+                    <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                        <Home size={20} />
+                    </div>
+                    <div>
+                        <h1 className="font-black text-lg leading-tight tracking-tight">Family OS</h1>
+                        <p className="text-xs opacity-60 font-medium">پنل {currentUser.name}</p>
+                    </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                    <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-full hover:bg-slate-200/50 transition-colors">
+                        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                    </button>
+                    
+                    <button onClick={switchUser} className="flex items-center gap-2 bg-slate-200/50 hover:bg-red-100 text-slate-600 hover:text-red-600 px-3 py-1.5 rounded-full transition-all text-xs font-bold">
+                        <Repeat size={14} />
+                        <span className="hidden md:inline">تغییر کاربر</span>
+                    </button>
+                    
+                    <div className={`w-10 h-10 rounded-full ${currentUser.color} p-0.5 border-2 border-white shadow-md`}>
+                        <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xl overflow-hidden">
+                        {currentUser.avatar}
+                        </div>
+                    </div>
+                    </div>
+                </header>
+
+                {/* محتوای اصلی */}
+                <main className="flex-1 overflow-hidden relative">
+                    {activeApp ? (
+                    <AppWindow app={activeApp} close={() => setActiveApp(null)} user={currentUser} theme={theme} />
+                    ) : (
+                    <Dashboard openApp={setActiveApp} user={currentUser} theme={theme} />
+                    )}
+                </main>
+
+                </div>
+            );
+        }
+
+        // --- کامپوننت‌های کمکی ---
+
+        function UserSelectScreen({ onSelect }) {
+            return (
+                <div className="h-screen bg-slate-50 font-[vazir,sans-serif] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+                <div className="z-10 text-center w-full max-w-3xl">
+                    <h1 className="text-3xl font-black text-slate-800 mb-2">خانواده ما ❤️</h1>
+                    <p className="text-slate-500 mb-10">برای ورود روی عکس خود کلیک کنید</p>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {FAMILY_MEMBERS.map((member) => (
+                        <button
+                        key={member.id}
+                        onClick={() => onSelect(member)}
+                        className={`bg-white p-4 py-8 rounded-3xl border border-slate-100 shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 flex flex-col items-center gap-4 group`}
+                        >
+                        <div className={`w-20 h-20 rounded-full ${member.color} flex items-center justify-center text-4xl shadow-lg ring-4 ring-offset-2 ${member.ring} group-hover:scale-110 transition-transform`}>
+                            {member.avatar}
+                        </div>
+                        <span className="font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{member.name.split(' ')[0]}</span>
+                        </button>
+                    ))}
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        function Dashboard({ openApp, user, theme }) {
+            const [time, setTime] = useState(new Date());
+            const [financeSummary, setFinanceSummary] = useState({ income: 0, expense: 0 });
+
+            useEffect(() => {
+                const timer = setInterval(() => setTime(new Date()), 60000);
+                
+                if(!db) return;
+                const unsub = onSnapshot(collection(db, 'finance'), (snap) => {
+                    let inc = 0, exp = 0;
+                    snap.docs.forEach(doc => {
+                        const d = doc.data();
+                        if(d.type === 'income') inc += d.amount;
+                        else exp += d.amount;
+                    });
+                    setFinanceSummary({ income: inc, expense: exp });
+                });
+
+                return () => {
+                    clearInterval(timer);
+                    unsub();
+                }
+            }, []);
+
+            const total = Math.max(financeSummary.income + financeSummary.expense, 1);
+            const incPercent = (financeSummary.income / total) * 100;
+            const expPercent = (financeSummary.expense / total) * 100;
+
+            return (
+                <div className="h-full overflow-y-auto p-4 md:p-8 space-y-8 animate-fade-in pb-24">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    <div className={`md:col-span-2 p-6 rounded-3xl ${theme === 'dark' ? 'bg-indigo-900/40 border-indigo-500/30' : 'bg-white border-indigo-100'} border shadow-xl shadow-indigo-500/5 relative overflow-hidden flex flex-col justify-between`}>
+                    <div>
+                        <h2 className="text-3xl font-black mb-2">سلام {user.name.split(' ')[0]} 👋</h2>
+                        <p className="opacity-70 text-sm mb-4">وضعیت کلی خانه در یک نگاه:</p>
+                        
+                        <div className="bg-slate-100/50 p-3 rounded-xl mb-4">
+                            <div className="flex justify-between text-xs mb-1 font-bold">
+                                <span className="text-emerald-600">درآمد: {financeSummary.income.toLocaleString()}</span>
+                                <span className="text-rose-600">هزینه: {financeSummary.expense.toLocaleString()}</span>
+                            </div>
+                            <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden flex">
+                                <div style={{ width: `${incPercent}%` }} className="h-full bg-emerald-500"></div>
+                                <div style={{ width: `${expPercent}%` }} className="h-full bg-rose-500"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex gap-3 mt-2">
+                        <button onClick={()=>openApp('tasks')} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-200 flex-1 md:flex-none">کارهای من</button>
+                        <button onClick={()=>openApp('finance')} className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold flex-1 md:flex-none">مدیریت مالی</button>
+                    </div>
+                    </div>
+
+                    <div className={`p-6 rounded-3xl flex flex-col justify-between ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-800'} text-white shadow-lg`}>
+                    <div className="flex justify-between">
+                        <span className="opacity-50 text-sm">امروز</span>
+                        <Sun className="text-yellow-400" />
+                    </div>
+                    <p className="text-5xl font-bold mt-4" dir="ltr">{time.getHours()}:{time.getMinutes() < 10 ? '0'+time.getMinutes() : time.getMinutes()}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 className="font-bold text-xl mb-4 opacity-80 flex items-center gap-2"><PieChart size={20}/> ابزارهای مدیریت</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                    {APPS.map(app => (
+                        <button 
+                        key={app.id} 
+                        onClick={() => openApp(app.id)}
+                        className={`p-4 rounded-2xl flex flex-col items-center gap-3 transition-all duration-300 hover:scale-105 hover:shadow-lg ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-indigo-50'} border border-transparent hover:border-indigo-200`}
+                        >
+                        <div className={`w-14 h-14 rounded-2xl ${app.color} text-white flex items-center justify-center shadow-lg shadow-${app.color.replace('bg-', '')}/30`}>
+                            {app.icon}
+                        </div>
+                        <span className="font-bold text-sm">{app.name}</span>
+                        </button>
+                    ))}
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        function AppWindow({ app: appId, close, user, theme }) {
+            const appData = APPS.find(a => a.id === appId);
             
-            {/* مینی چارت مالی */}
-            <div className="bg-slate-100/50 p-3 rounded-xl mb-4">
-                <div className="flex justify-between text-xs mb-1 font-bold">
-                    <span className="text-emerald-600">درآمد: {financeSummary.income.toLocaleString()}</span>
-                    <span className="text-rose-600">هزینه: {financeSummary.expense.toLocaleString()}</span>
+            return (
+                <div className={`absolute inset-0 z-30 flex flex-col ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'} animate-slide-up`}>
+                <div className={`px-6 py-4 flex items-center justify-between ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} border-b border-slate-200 shadow-sm sticky top-0 z-10`}>
+                    <div className="flex items-center gap-3">
+                    <button onClick={close} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                        <ChevronRight size={24} />
+                    </button>
+                    <div className={`w-10 h-10 rounded-xl ${appData.color} flex items-center justify-center text-white`}>
+                        {appData.icon}
+                    </div>
+                    <h2 className="text-xl font-bold">{appData.name}</h2>
+                    </div>
                 </div>
-                <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden flex">
-                    <div style={{ width: `${incPercent}%` }} className="h-full bg-emerald-500"></div>
-                    <div style={{ width: `${expPercent}%` }} className="h-full bg-rose-500"></div>
+                <div className="flex-1 overflow-y-auto p-4 md:p-8">
+                    {appId === 'calendar' && <CalendarApp user={user} />}
+                    {appId === 'tasks' && <TasksApp user={user} />}
+                    {appId === 'wifi' && <WifiApp user={user} />}
+                    {appId === 'notes' && <NotesApp user={user} />}
+                    {appId === 'health' && <HealthApp user={user} />}
+                    {appId === 'meals' && <MealsApp user={user} />}
+                    {appId === 'finance' && <FinanceApp user={user} />}
+                    {appId === 'shopping' && <ShoppingApp user={user} />}
+                    {appId === 'chat' && <ChatApp user={user} />}
+                    {appId === 'repair' && <RepairApp user={user} />}
                 </div>
-            </div>
-          </div>
-          
-          <div className="flex gap-3 mt-2">
-               <button onClick={()=>openApp('tasks')} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-200 flex-1 md:flex-none">کارهای من</button>
-               <button onClick={()=>openApp('finance')} className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold flex-1 md:flex-none">مدیریت مالی</button>
-          </div>
-        </div>
+                </div>
+            );
+        }
 
-        {/* ساعت */}
-        <div className={`p-6 rounded-3xl flex flex-col justify-between ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-800'} text-white shadow-lg`}>
-          <div className="flex justify-between">
-             <span className="opacity-50 text-sm">امروز</span>
-             <Sun className="text-yellow-400" />
-          </div>
-          <p className="text-5xl font-bold mt-4" dir="ltr">{time.getHours()}:{time.getMinutes() < 10 ? '0'+time.getMinutes() : time.getMinutes()}</p>
-        </div>
-      </div>
+        function FinanceApp({ user }) {
+            const [items, setItems] = useState([]);
+            const [amount, setAmount] = useState('');
+            const [desc, setDesc] = useState('');
+            const [type, setType] = useState('expense');
 
-      <div>
-        <h3 className="font-bold text-xl mb-4 opacity-80 flex items-center gap-2"><PieChart size={20}/> ابزارهای مدیریت</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-          {APPS.map(app => (
-            <button 
-              key={app.id} 
-              onClick={() => openApp(app.id)}
-              className={`p-4 rounded-2xl flex flex-col items-center gap-3 transition-all duration-300 hover:scale-105 hover:shadow-lg ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-indigo-50'} border border-transparent hover:border-indigo-200`}
-            >
-              <div className={`w-14 h-14 rounded-2xl ${app.color} text-white flex items-center justify-center shadow-lg shadow-${app.color.replace('bg-', '')}/30`}>
-                {React.cloneElement(app.icon, { size: 28 })}
-              </div>
-              <span className="font-bold text-sm">{app.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'finance'), orderBy('createdAt', 'desc')), 
+                (snap) => setItems(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
 
-function AppWindow({ app: appId, close, user, theme }) {
-  const appData = APPS.find(a => a.id === appId);
-  
-  return (
-    <div className={`absolute inset-0 z-30 flex flex-col ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'} animate-slide-up`}>
-      <div className={`px-6 py-4 flex items-center justify-between ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} border-b border-slate-200 shadow-sm sticky top-0 z-10`}>
-        <div className="flex items-center gap-3">
-          <button onClick={close} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-            <ChevronRight size={24} />
-          </button>
-          <div className={`w-10 h-10 rounded-xl ${appData.color} flex items-center justify-center text-white`}>
-            {appData.icon}
-          </div>
-          <h2 className="text-xl font-bold">{appData.name}</h2>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        {/* رندر کردن کامپوننت مربوط به هر اپ */}
-        {appId === 'calendar' && <CalendarApp user={user} />}
-        {appId === 'tasks' && <TasksApp user={user} />}
-        {appId === 'wifi' && <WifiApp user={user} />}
-        {appId === 'notes' && <NotesApp user={user} />}
-        {appId === 'health' && <HealthApp user={user} />}
-        {appId === 'meals' && <MealsApp user={user} />}
-        {appId === 'finance' && <FinanceApp user={user} />}
-        {appId === 'shopping' && <ShoppingApp user={user} />}
-        {appId === 'chat' && <ChatApp user={user} />}
-        {appId === 'repair' && <RepairApp user={user} />}
-      </div>
-    </div>
-  );
-}
+            const addFinance = async (e) => {
+                e.preventDefault();
+                if(!amount || !desc) return;
+                await addDoc(collection(db, 'finance'), { 
+                amount: parseInt(amount), 
+                description: desc,
+                type,
+                createdBy: user.name, 
+                createdAt: serverTimestamp() 
+                });
+                setAmount(''); setDesc('');
+            };
 
-// --- اپلیکیشن‌ها با ویژگی‌های جدید و نمودار ---
+            const totalExpense = items.filter(i => i.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0);
+            const totalIncome = items.filter(i => i.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
+            
+            const maxValue = Math.max(totalIncome, totalExpense, 1);
+            const incomeHeight = (totalIncome / maxValue) * 100;
+            const expenseHeight = (totalExpense / maxValue) * 100;
 
-function FinanceApp({ user }) {
-  const [items, setItems] = useState([]);
-  const [amount, setAmount] = useState('');
-  const [desc, setDesc] = useState('');
-  const [type, setType] = useState('expense');
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                        <h3 className="font-bold text-slate-700 mb-4 text-center">نمودار درآمد و هزینه</h3>
+                        <div className="flex justify-center items-end gap-8 h-32 border-b border-slate-200 pb-2">
+                            <div className="w-16 flex flex-col items-center gap-2 group">
+                                <span className="text-xs font-bold text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">{totalIncome.toLocaleString()}</span>
+                                <div style={{ height: `${incomeHeight}%` }} className="w-full bg-emerald-500 rounded-t-lg transition-all duration-500 min-h-[10px]"></div>
+                                <span className="text-xs font-bold text-slate-500">درآمد</span>
+                            </div>
+                            <div className="w-16 flex flex-col items-center gap-2 group">
+                                <span className="text-xs font-bold text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity">{totalExpense.toLocaleString()}</span>
+                                <div style={{ height: `${expenseHeight}%` }} className="w-full bg-rose-500 rounded-t-lg transition-all duration-500 min-h-[10px]"></div>
+                                <span className="text-xs font-bold text-slate-500">هزینه</span>
+                            </div>
+                        </div>
+                        <div className="mt-4 text-center text-sm font-bold text-slate-600">
+                            تراز مالی: <span dir="ltr">{(totalIncome - totalExpense).toLocaleString()}</span> تومان
+                        </div>
+                    </div>
 
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'finance'), orderBy('createdAt', 'desc')), 
-    (snap) => setItems(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-  }, []);
+                    <form onSubmit={addFinance} className="bg-white p-4 rounded-xl border space-y-3">
+                        <div className="flex gap-2">
+                            <button type="button" onClick={()=>setType('expense')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${type === 'expense' ? 'bg-rose-100 text-rose-700 ring-2 ring-rose-200' : 'bg-slate-50 text-slate-500'}`}>هزینه 📉</button>
+                            <button type="button" onClick={()=>setType('income')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${type === 'income' ? 'bg-emerald-100 text-emerald-700 ring-2 ring-emerald-200' : 'bg-slate-50 text-slate-500'}`}>درآمد 📈</button>
+                        </div>
+                        <div className="flex gap-2">
+                            <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="مبلغ (تومان)" className="w-1/3 p-2 border rounded-lg" dir="ltr" />
+                            <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="بابت..." className="flex-1 p-2 border rounded-lg" />
+                        </div>
+                        <button className={`w-full py-2 rounded-lg text-white font-bold ${type === 'expense' ? 'bg-rose-600' : 'bg-emerald-600'}`}>ثبت تراکنش</button>
+                    </form>
 
-  const addFinance = async (e) => {
-    e.preventDefault();
-    if(!amount || !desc) return;
-    await addDoc(collection(db, 'finance'), { 
-      amount: parseInt(amount), 
-      description: desc,
-      type,
-      createdBy: user.name, 
-      createdAt: serverTimestamp() 
-    });
-    setAmount(''); setDesc('');
-  };
+                    <div className="space-y-2">
+                        {items.map(item => (
+                            <div key={item.id} className="bg-white p-3 rounded-xl border flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${item.type === 'expense' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
+                                        {item.type === 'expense' ? <TrendingDown size={20}/> : <TrendingUp size={20}/>}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold">{item.description}</p>
+                                        <p className="text-xs text-slate-400">{item.createdBy}</p>
+                                    </div>
+                                </div>
+                                <div className="text-left">
+                                    <p className={`font-bold ${item.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'}`} dir="ltr">{item.amount.toLocaleString()}</p>
+                                    <button onClick={()=>deleteDoc(doc(db, 'finance', item.id))} className="text-xs text-slate-300 hover:text-red-500 mt-1">حذف</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
 
-  const totalExpense = items.filter(i => i.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0);
-  const totalIncome = items.filter(i => i.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
-  
-  // محاسبه برای نمودار
-  const maxValue = Math.max(totalIncome, totalExpense, 1); // جلوگیری از تقسیم بر صفر
-  const incomeHeight = (totalIncome / maxValue) * 100;
-  const expenseHeight = (totalExpense / maxValue) * 100;
+        function TasksApp({ user }) {
+            const [tasks, setTasks] = useState([]);
+            const [newTask, setNewTask] = useState('');
+            const [assignee, setAssignee] = useState(user.name);
+            const [reward, setReward] = useState('10');
 
-  return (
-      <div className="max-w-3xl mx-auto space-y-6">
-          {/* نمودار میله‌ای پویا */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-             <h3 className="font-bold text-slate-700 mb-4 text-center">نمودار درآمد و هزینه</h3>
-             <div className="flex justify-center items-end gap-8 h-32 border-b border-slate-200 pb-2">
-                 <div className="w-16 flex flex-col items-center gap-2 group">
-                     <span className="text-xs font-bold text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">{totalIncome.toLocaleString()}</span>
-                     <div style={{ height: `${incomeHeight}%` }} className="w-full bg-emerald-500 rounded-t-lg transition-all duration-500 min-h-[10px]"></div>
-                     <span className="text-xs font-bold text-slate-500">درآمد</span>
-                 </div>
-                 <div className="w-16 flex flex-col items-center gap-2 group">
-                     <span className="text-xs font-bold text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity">{totalExpense.toLocaleString()}</span>
-                     <div style={{ height: `${expenseHeight}%` }} className="w-full bg-rose-500 rounded-t-lg transition-all duration-500 min-h-[10px]"></div>
-                     <span className="text-xs font-bold text-slate-500">هزینه</span>
-                 </div>
-             </div>
-             <div className="mt-4 text-center text-sm font-bold text-slate-600">
-                 تراز مالی: <span dir="ltr">{(totalIncome - totalExpense).toLocaleString()}</span> تومان
-             </div>
-          </div>
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'tasks'), orderBy('createdAt', 'desc')), 
+                (snap) => setTasks(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
 
-          <form onSubmit={addFinance} className="bg-white p-4 rounded-xl border space-y-3">
-              <div className="flex gap-2">
-                 <button type="button" onClick={()=>setType('expense')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${type === 'expense' ? 'bg-rose-100 text-rose-700 ring-2 ring-rose-200' : 'bg-slate-50 text-slate-500'}`}>هزینه 📉</button>
-                 <button type="button" onClick={()=>setType('income')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${type === 'income' ? 'bg-emerald-100 text-emerald-700 ring-2 ring-emerald-200' : 'bg-slate-50 text-slate-500'}`}>درآمد 📈</button>
-              </div>
-              <div className="flex gap-2">
-                  <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="مبلغ (تومان)" className="w-1/3 p-2 border rounded-lg" dir="ltr" />
-                  <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="بابت..." className="flex-1 p-2 border rounded-lg" />
-              </div>
-              <button className={`w-full py-2 rounded-lg text-white font-bold ${type === 'expense' ? 'bg-rose-600' : 'bg-emerald-600'}`}>ثبت تراکنش</button>
-          </form>
+            const addTask = async (e) => {
+                e.preventDefault();
+                if(!newTask) return;
+                await addDoc(collection(db, 'tasks'), { 
+                title: newTask, 
+                assignee, 
+                reward: parseInt(reward),
+                isDone: false, 
+                createdBy: user.name, 
+                createdAt: serverTimestamp() 
+                });
+                setNewTask('');
+            };
 
-          <div className="space-y-2">
-              {items.map(item => (
-                  <div key={item.id} className="bg-white p-3 rounded-xl border flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${item.type === 'expense' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
-                             {item.type === 'expense' ? <TrendingDown size={20}/> : <TrendingUp size={20}/>}
-                          </div>
-                          <div>
-                              <p className="font-bold">{item.description}</p>
-                              <p className="text-xs text-slate-400">{item.createdBy}</p>
-                          </div>
-                      </div>
-                      <div className="text-left">
-                          <p className={`font-bold ${item.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'}`} dir="ltr">{item.amount.toLocaleString()}</p>
-                          <button onClick={()=>deleteDoc(doc(db, 'finance', item.id))} className="text-xs text-slate-300 hover:text-red-500 mt-1">حذف</button>
-                      </div>
-                  </div>
-              ))}
-          </div>
-      </div>
-  );
-}
+            const totalTasks = tasks.length;
+            const completedTasks = tasks.filter(t => t.isDone).length;
+            const progress = totalTasks === 0 ? 0 : (completedTasks / totalTasks) * 100;
 
-function TasksApp({ user }) {
-  const [tasks, setTasks] = useState([]);
-  const [newTask, setNewTask] = useState('');
-  const [assignee, setAssignee] = useState(user.name);
-  const [reward, setReward] = useState('10');
+            return (
+                <div className="space-y-6">
+                <div className="bg-white p-4 rounded-xl border shadow-sm">
+                    <div className="flex justify-between mb-2">
+                        <span className="text-sm font-bold text-slate-600">پیشرفت کارها</span>
+                        <span className="text-sm font-bold text-indigo-600">{Math.round(progress)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                        <div style={{ width: `${progress}%` }} className="h-full bg-indigo-500 transition-all duration-500 rounded-full"></div>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2 text-center">{completedTasks} کار از {totalTasks} کار انجام شده است</p>
+                </div>
 
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'tasks'), orderBy('createdAt', 'desc')), 
-    (snap) => setTasks(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-  }, []);
+                <form onSubmit={addTask} className="bg-white p-4 rounded-xl border space-y-3 shadow-sm">
+                    <div className="flex gap-2">
+                    <input value={newTask} onChange={e=>setNewTask(e.target.value)} placeholder="عنوان وظیفه..." className="flex-1 p-2 border rounded-lg" />
+                    </div>
+                    <div className="flex gap-2">
+                    <select value={assignee} onChange={e=>setAssignee(e.target.value)} className="flex-1 p-2 border rounded-lg bg-white">
+                        {FAMILY_MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                    </select>
+                    <select value={reward} onChange={e=>setReward(e.target.value)} className="w-32 p-2 border rounded-lg bg-white">
+                        <option value="10">۱۰ سکه</option>
+                        <option value="20">۲۰ سکه</option>
+                        <option value="50">۵۰ سکه</option>
+                    </select>
+                    <button className="bg-blue-600 text-white px-6 rounded-lg font-bold">افزودن</button>
+                    </div>
+                </form>
+                <div className="space-y-2">
+                    {tasks.map(t => (
+                    <div key={t.id} className={`flex justify-between items-center p-4 bg-white border rounded-xl ${t.isDone ? 'opacity-60 bg-slate-50' : 'hover:border-blue-300'} transition-all`}>
+                        <div className="flex items-center gap-4">
+                        <button onClick={() => updateDoc(doc(db, 'tasks', t.id), { isDone: !t.isDone })} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${t.isDone ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}>
+                            {t.isDone && <CheckSquare size={14} className="text-white"/>}
+                        </button>
+                        <div>
+                            <p className={`font-bold ${t.isDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</p>
+                            <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded">مسئول: {t.assignee}</span>
+                                <span className="text-amber-500 font-bold">{t.reward} سکه</span>
+                            </div>
+                        </div>
+                        </div>
+                        <button onClick={() => deleteDoc(doc(db, 'tasks', t.id))}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
+                    </div>
+                    ))}
+                </div>
+                </div>
+            );
+        }
 
-  const addTask = async (e) => {
-    e.preventDefault();
-    if(!newTask) return;
-    await addDoc(collection(db, 'tasks'), { 
-      title: newTask, 
-      assignee, 
-      reward: parseInt(reward),
-      isDone: false, 
-      createdBy: user.name, 
-      createdAt: serverTimestamp() 
-    });
-    setNewTask('');
-  };
+        function CalendarApp({ user }) {
+            const [events, setEvents] = useState([]);
+            const [newTitle, setNewTitle] = useState('');
+            const [newTime, setNewTime] = useState('');
+            const [eventType, setEventType] = useState('general');
 
-  // محاسبه پیشرفت
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.isDone).length;
-  const progress = totalTasks === 0 ? 0 : (completedTasks / totalTasks) * 100;
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'events'), orderBy('createdAt', 'desc')), 
+                (snap) => setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+            }, []);
 
-  return (
-    <div className="space-y-6">
-      {/* نوار پیشرفت */}
-      <div className="bg-white p-4 rounded-xl border shadow-sm">
-          <div className="flex justify-between mb-2">
-              <span className="text-sm font-bold text-slate-600">پیشرفت کارها</span>
-              <span className="text-sm font-bold text-indigo-600">{Math.round(progress)}%</span>
-          </div>
-          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div style={{ width: `${progress}%` }} className="h-full bg-indigo-500 transition-all duration-500 rounded-full"></div>
-          </div>
-          <p className="text-xs text-slate-400 mt-2 text-center">{completedTasks} کار از {totalTasks} کار انجام شده است</p>
-      </div>
+            const addEvent = async (e) => {
+                e.preventDefault();
+                if(!newTitle) return;
+                await addDoc(collection(db, 'events'), { title: newTitle, time: newTime || 'تمام روز', type: eventType, createdBy: user.name, createdAt: serverTimestamp() });
+                setNewTitle(''); setNewTime('');
+            };
 
-      <form onSubmit={addTask} className="bg-white p-4 rounded-xl border space-y-3 shadow-sm">
-        <div className="flex gap-2">
-           <input value={newTask} onChange={e=>setNewTask(e.target.value)} placeholder="عنوان وظیفه..." className="flex-1 p-2 border rounded-lg" />
-        </div>
-        <div className="flex gap-2">
-          <select value={assignee} onChange={e=>setAssignee(e.target.value)} className="flex-1 p-2 border rounded-lg bg-white">
-            {FAMILY_MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-          </select>
-          <select value={reward} onChange={e=>setReward(e.target.value)} className="w-32 p-2 border rounded-lg bg-white">
-            <option value="10">۱۰ سکه</option>
-            <option value="20">۲۰ سکه</option>
-            <option value="50">۵۰ سکه</option>
-          </select>
-          <button className="bg-blue-600 text-white px-6 rounded-lg font-bold">افزودن</button>
-        </div>
-      </form>
-      <div className="space-y-2">
-        {tasks.map(t => (
-          <div key={t.id} className={`flex justify-between items-center p-4 bg-white border rounded-xl ${t.isDone ? 'opacity-60 bg-slate-50' : 'hover:border-blue-300'} transition-all`}>
-             <div className="flex items-center gap-4">
-               <button onClick={() => updateDoc(doc(db, 'tasks', t.id), { isDone: !t.isDone })} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${t.isDone ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}>
-                  {t.isDone && <CheckSquare size={14} className="text-white"/>}
-               </button>
-               <div>
-                 <p className={`font-bold ${t.isDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</p>
-                 <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                    <span className="bg-slate-100 px-2 py-0.5 rounded">مسئول: {t.assignee}</span>
-                    <span className="text-amber-500 font-bold">{t.reward} سکه</span>
-                 </div>
-               </div>
-             </div>
-             <button onClick={() => deleteDoc(doc(db, 'tasks', t.id))}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+            const getTypeIcon = (type) => {
+                switch(type) {
+                case 'doctor': return <HeartPulse size={16} className="text-red-500" />;
+                case 'meeting': return <Clock size={16} className="text-blue-500" />;
+                case 'party': return <Coffee size={16} className="text-orange-500" />;
+                default: return <Calendar size={16} className="text-purple-500" />;
+                }
+            };
 
-// برای کوتاه شدن کد، بقیه کامپوننت‌ها مشابه قبل هستند (Calendar, Shopping, etc.)
-// فقط باید مطمئن شوید تمام کامپوننت‌هایی که در AppWindow استفاده شده‌اند (CalendarApp, WifiApp, ...)
-// دقیقاً مثل نسخه قبلی در کد باشند.
-// من برای تکمیل بودن، کد بقیه را هم می‌گذارم:
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                <form onSubmit={addEvent} className="bg-white p-4 rounded-xl shadow-sm border space-y-3">
+                    <div className="flex flex-col md:flex-row gap-2">
+                    <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="عنوان رویداد" className="flex-1 p-2 border rounded-lg" />
+                    <input value={newTime} onChange={e=>setNewTime(e.target.value)} placeholder="زمان" className="md:w-48 p-2 border rounded-lg" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                    <select value={eventType} onChange={e=>setEventType(e.target.value)} className="p-2 border rounded-lg bg-slate-50 text-sm">
+                        <option value="general">عمومی</option>
+                        <option value="doctor">پزشکی</option>
+                        <option value="meeting">جلسه/کلاس</option>
+                        <option value="party">تفریح</option>
+                    </select>
+                    <button className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold flex-1">ثبت</button>
+                    </div>
+                </form>
+                <div className="space-y-3">
+                    {events.map(ev => (
+                    <div key={ev.id} className="p-4 bg-white border rounded-xl flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-slate-50 border`}>{getTypeIcon(ev.type)}</div>
+                        <div className="flex-1">
+                        <h4 className="font-bold text-lg">{ev.title}</h4>
+                        <p className="text-sm text-slate-500 flex items-center gap-2">
+                            <Clock size={14} /> {ev.time} <span className="opacity-50">| {ev.createdBy}</span>
+                        </p>
+                        </div>
+                        <button onClick={() => deleteDoc(doc(db, 'events', ev.id))}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
+                    </div>
+                    ))}
+                </div>
+                </div>
+            );
+        }
 
-function CalendarApp({ user }) {
-  const [events, setEvents] = useState([]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newTime, setNewTime] = useState('');
-  const [eventType, setEventType] = useState('general');
+        function ShoppingApp({ user }) {
+            const [items, setItems] = useState([]);
+            const [newItem, setNewItem] = useState('');
+            const [count, setCount] = useState('1');
 
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'events'), orderBy('createdAt', 'desc')), 
-    (snap) => setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, []);
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'shopping'), orderBy('createdAt', 'desc')), 
+                (snap) => setItems(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
 
-  const addEvent = async (e) => {
-    e.preventDefault();
-    if(!newTitle) return;
-    await addDoc(collection(db, 'events'), { title: newTitle, time: newTime || 'تمام روز', type: eventType, createdBy: user.name, createdAt: serverTimestamp() });
-    setNewTitle(''); setNewTime('');
-  };
+            const addItem = async (e) => {
+                e.preventDefault();
+                if(!newItem) return;
+                await addDoc(collection(db, 'shopping'), { name: newItem, count, isBought: false, createdBy: user.name, createdAt: serverTimestamp() });
+                setNewItem(''); setCount('1');
+            };
 
-  const getTypeIcon = (type) => {
-    switch(type) {
-      case 'doctor': return <HeartPulse size={16} className="text-red-500" />;
-      case 'meeting': return <Clock size={16} className="text-blue-500" />;
-      case 'party': return <Coffee size={16} className="text-orange-500" />;
-      default: return <Calendar size={16} className="text-purple-500" />;
-    }
-  };
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                    <form onSubmit={addItem} className="flex gap-2 bg-white p-2 rounded-xl border shadow-sm">
+                        <input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="کالای مورد نیاز..." className="flex-1 p-3 bg-transparent outline-none" />
+                        <input type="number" value={count} onChange={e=>setCount(e.target.value)} placeholder="#" className="w-16 p-3 bg-slate-50 outline-none text-center" />
+                        <button className="bg-pink-600 text-white px-6 rounded-lg font-bold">ثبت</button>
+                    </form>
+                    <div className="space-y-2">
+                        {items.map(item => (
+                            <div key={item.id} className={`bg-white p-3 rounded-xl border flex justify-between items-center ${item.isBought ? 'opacity-50 bg-slate-50' : ''}`}>
+                                <div className="flex items-center gap-3 cursor-pointer" onClick={() => updateDoc(doc(db, 'shopping', item.id), { isBought: !item.isBought })}>
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${item.isBought ? 'bg-pink-500 border-pink-500' : 'border-slate-300'}`}>
+                                        {item.isBought && <CheckSquare size={12} className="text-white"/>}
+                                    </div>
+                                    <div>
+                                        <span className={`block font-bold ${item.isBought ? 'line-through' : ''}`}>{item.name}</span>
+                                        <span className="text-xs text-slate-400">تعداد: {item.count}</span>
+                                    </div>
+                                </div>
+                                <button onClick={()=>deleteDoc(doc(db, 'shopping', item.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
 
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <form onSubmit={addEvent} className="bg-white p-4 rounded-xl shadow-sm border space-y-3">
-        <div className="flex flex-col md:flex-row gap-2">
-          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="عنوان رویداد" className="flex-1 p-2 border rounded-lg" />
-          <input value={newTime} onChange={e=>setNewTime(e.target.value)} placeholder="زمان" className="md:w-48 p-2 border rounded-lg" />
-        </div>
-        <div className="flex gap-2 items-center">
-          <select value={eventType} onChange={e=>setEventType(e.target.value)} className="p-2 border rounded-lg bg-slate-50 text-sm">
-            <option value="general">عمومی</option>
-            <option value="doctor">پزشکی</option>
-            <option value="meeting">جلسه/کلاس</option>
-            <option value="party">تفریح</option>
-          </select>
-          <button className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold flex-1">ثبت</button>
-        </div>
-      </form>
-      <div className="space-y-3">
-        {events.map(ev => (
-          <div key={ev.id} className="p-4 bg-white border rounded-xl flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-slate-50 border`}>{getTypeIcon(ev.type)}</div>
-            <div className="flex-1">
-               <h4 className="font-bold text-lg">{ev.title}</h4>
-               <p className="text-sm text-slate-500 flex items-center gap-2">
-                 <Clock size={14} /> {ev.time} <span className="opacity-50">| {ev.createdBy}</span>
-               </p>
-            </div>
-            <button onClick={() => deleteDoc(doc(db, 'events', ev.id))}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+        function RepairApp({ user }) {
+            const [items, setItems] = useState([]);
+            const [newItem, setNewItem] = useState('');
+            const [priority, setPriority] = useState('normal');
 
-function ShoppingApp({ user }) {
-  const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState('');
-  const [count, setCount] = useState('1');
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'repair'), orderBy('createdAt', 'desc')), 
+                (snap) => setItems(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
 
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'shopping'), orderBy('createdAt', 'desc')), 
-    (snap) => setItems(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-  }, []);
+            const addItem = async (e) => {
+                e.preventDefault();
+                if(!newItem) return;
+                await addDoc(collection(db, 'repair'), { text: newItem, priority, status: 'pending', createdBy: user.name, createdAt: serverTimestamp() });
+                setNewItem('');
+            };
 
-  const addItem = async (e) => {
-    e.preventDefault();
-    if(!newItem) return;
-    await addDoc(collection(db, 'shopping'), { name: newItem, count, isBought: false, createdBy: user.name, createdAt: serverTimestamp() });
-    setNewItem(''); setCount('1');
-  };
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                    <form onSubmit={addItem} className="flex gap-2 bg-white p-4 rounded-xl border">
+                        <input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="خرابی جدید..." className="flex-1 p-2 border rounded-lg" />
+                        <select value={priority} onChange={e=>setPriority(e.target.value)} className="p-2 border rounded-lg bg-white text-sm">
+                            <option value="normal">عادی</option>
+                            <option value="urgent">فوری 🚨</option>
+                        </select>
+                        <button className="bg-stone-600 text-white px-6 rounded-lg font-bold">ثبت</button>
+                    </form>
+                    <div className="space-y-2">
+                        {items.map(item => (
+                            <div key={item.id} className={`bg-white p-4 rounded-xl border flex justify-between items-center ${item.status === 'done' ? 'opacity-50' : ''}`}>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => updateDoc(doc(db, 'repair', item.id), { status: item.status === 'pending' ? 'done' : 'pending' })} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${item.status === 'done' ? 'bg-green-500 border-green-500' : 'border-stone-400'}`}>
+                                        {item.status === 'done' && <CheckCircle2 size={12} className="text-white"/>}
+                                    </button>
+                                    <div>
+                                        <p className={`font-bold ${item.status === 'done' ? 'line-through' : ''}`}>
+                                            {item.text} {item.priority === 'urgent' && <span className="mr-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">فوری</span>}
+                                        </p>
+                                        <p className="text-xs text-slate-400">ثبت: {item.createdBy}</p>
+                                    </div>
+                                </div>
+                                <button onClick={()=>deleteDoc(doc(db, 'repair', item.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
 
-  return (
-      <div className="max-w-3xl mx-auto space-y-6">
-          <form onSubmit={addItem} className="flex gap-2 bg-white p-2 rounded-xl border shadow-sm">
-              <input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="کالای مورد نیاز..." className="flex-1 p-3 bg-transparent outline-none" />
-              <input type="number" value={count} onChange={e=>setCount(e.target.value)} placeholder="#" className="w-16 p-3 bg-slate-50 outline-none text-center" />
-              <button className="bg-pink-600 text-white px-6 rounded-lg font-bold">ثبت</button>
-          </form>
-          <div className="space-y-2">
-              {items.map(item => (
-                  <div key={item.id} className={`bg-white p-3 rounded-xl border flex justify-between items-center ${item.isBought ? 'opacity-50 bg-slate-50' : ''}`}>
-                      <div className="flex items-center gap-3 cursor-pointer" onClick={() => updateDoc(doc(db, 'shopping', item.id), { isBought: !item.isBought })}>
-                          <div className={`w-5 h-5 rounded border flex items-center justify-center ${item.isBought ? 'bg-pink-500 border-pink-500' : 'border-slate-300'}`}>
-                             {item.isBought && <CheckSquare size={12} className="text-white"/>}
-                          </div>
-                          <div>
-                            <span className={`block font-bold ${item.isBought ? 'line-through' : ''}`}>{item.name}</span>
-                            <span className="text-xs text-slate-400">تعداد: {item.count}</span>
-                          </div>
-                      </div>
-                      <button onClick={()=>deleteDoc(doc(db, 'shopping', item.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
-                  </div>
-              ))}
-          </div>
-      </div>
-  );
-}
+        function NotesApp({ user }) {
+            const [notes, setNotes] = useState([]);
+            const [newTitle, setNewTitle] = useState('');
+            const [newText, setNewText] = useState('');
 
-function RepairApp({ user }) {
-  const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState('');
-  const [priority, setPriority] = useState('normal');
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'notes'), orderBy('createdAt', 'desc')), 
+                (snap) => setNotes(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
 
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'repair'), orderBy('createdAt', 'desc')), 
-    (snap) => setItems(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-  }, []);
+            const addNote = async (e) => {
+                e.preventDefault();
+                if(!newTitle) return;
+                await addDoc(collection(db, 'notes'), { title: newTitle, text: newText, createdBy: user.name, createdAt: serverTimestamp() });
+                setNewTitle(''); setNewText('');
+            };
 
-  const addItem = async (e) => {
-    e.preventDefault();
-    if(!newItem) return;
-    await addDoc(collection(db, 'repair'), { text: newItem, priority, status: 'pending', createdBy: user.name, createdAt: serverTimestamp() });
-    setNewItem('');
-  };
+            return (
+                <div className="space-y-4">
+                <form onSubmit={addNote} className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-2">
+                    <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="عنوان" className="w-full p-2 border border-amber-200 rounded-lg outline-none" />
+                    <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="متن..." className="w-full p-2 border border-amber-200 rounded-lg h-20 outline-none" />
+                    <button className="w-full bg-amber-500 text-white py-2 rounded-lg font-bold">ذخیره</button>
+                </form>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {notes.map(n => (
+                    <div key={n.id} className="bg-white p-5 rounded-xl border border-amber-100 shadow-sm relative group hover:-translate-y-1 transition-transform">
+                        <h4 className="font-bold text-lg mb-2 text-amber-900">{n.title}</h4>
+                        <p className="text-sm text-slate-600 whitespace-pre-wrap">{n.text}</p>
+                        <button onClick={() => deleteDoc(doc(db, 'notes', n.id))} className="absolute top-2 left-2 text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                    </div>
+                    ))}
+                </div>
+                </div>
+            );
+        }
 
-  return (
-      <div className="max-w-3xl mx-auto space-y-6">
-          <form onSubmit={addItem} className="flex gap-2 bg-white p-4 rounded-xl border">
-              <input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="خرابی جدید..." className="flex-1 p-2 border rounded-lg" />
-              <select value={priority} onChange={e=>setPriority(e.target.value)} className="p-2 border rounded-lg bg-white text-sm">
-                  <option value="normal">عادی</option>
-                  <option value="urgent">فوری 🚨</option>
-              </select>
-              <button className="bg-stone-600 text-white px-6 rounded-lg font-bold">ثبت</button>
-          </form>
-          <div className="space-y-2">
-              {items.map(item => (
-                  <div key={item.id} className={`bg-white p-4 rounded-xl border flex justify-between items-center ${item.status === 'done' ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center gap-3">
-                          <button onClick={() => updateDoc(doc(db, 'repair', item.id), { status: item.status === 'pending' ? 'done' : 'pending' })} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${item.status === 'done' ? 'bg-green-500 border-green-500' : 'border-stone-400'}`}>
-                             {item.status === 'done' && <CheckCircle2 size={12} className="text-white"/>}
-                          </button>
-                          <div>
-                              <p className={`font-bold ${item.status === 'done' ? 'line-through' : ''}`}>
-                                  {item.text} {item.priority === 'urgent' && <span className="mr-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">فوری</span>}
-                              </p>
-                              <p className="text-xs text-slate-400">ثبت: {item.createdBy}</p>
-                          </div>
-                      </div>
-                      <button onClick={()=>deleteDoc(doc(db, 'repair', item.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
-                  </div>
-              ))}
-          </div>
-      </div>
-  );
-}
+        function HealthApp({ user }) {
+            const [meds, setMeds] = useState([]);
+            const [newMed, setNewMed] = useState('');
+            const [person, setPerson] = useState('بهزاد (پدر)');
+            const [time, setTime] = useState('صبح');
 
-function NotesApp({ user }) {
-  const [notes, setNotes] = useState([]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newText, setNewText] = useState('');
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'medications')), (snap) => setMeds(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
 
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'notes'), orderBy('createdAt', 'desc')), 
-    (snap) => setNotes(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-  }, []);
+            const addMed = async (e) => {
+                e.preventDefault();
+                if(!newMed) return;
+                await addDoc(collection(db, 'medications'), { name: newMed, person, time, createdAt: serverTimestamp() });
+                setNewMed('');
+            };
 
-  const addNote = async (e) => {
-    e.preventDefault();
-    if(!newTitle) return;
-    await addDoc(collection(db, 'notes'), { title: newTitle, text: newText, createdBy: user.name, createdAt: serverTimestamp() });
-    setNewTitle(''); setNewText('');
-  };
+            return (
+                <div className="space-y-6">
+                    <div className="bg-red-50 p-4 rounded-xl border border-red-100 space-y-4">
+                        <h3 className="font-bold text-red-800 flex items-center gap-2"><Pill size={20}/> افزودن دارو</h3>
+                        <form onSubmit={addMed} className="flex flex-col md:flex-row gap-2">
+                            <input value={newMed} onChange={e=>setNewMed(e.target.value)} placeholder="نام دارو" className="flex-1 p-2 rounded-lg border-red-200" />
+                            <select value={person} onChange={e=>setPerson(e.target.value)} className="p-2 rounded-lg border-red-200 bg-white">
+                                {FAMILY_MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                            </select>
+                            <select value={time} onChange={e=>setTime(e.target.value)} className="p-2 rounded-lg border-red-200 bg-white w-24">
+                                <option>صبح</option><option>ظهر</option><option>شب</option>
+                            </select>
+                            <button className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold">ثبت</button>
+                        </form>
+                    </div>
+                    <div className="space-y-2">
+                        {meds.map(m => (
+                            <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-red-100 text-red-500 flex items-center justify-center"><HeartPulse size={18} /></div>
+                                    <div>
+                                        <h4 className="font-bold">{m.name}</h4>
+                                        <p className="text-xs text-slate-500">👤 {m.person} | ⏰ {m.time}</p>
+                                    </div>
+                                </div>
+                                <button onClick={()=>deleteDoc(doc(db, 'medications', m.id))}><Trash2 size={16} className="text-slate-300 hover:text-red-500"/></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
 
-  return (
-    <div className="space-y-4">
-      <form onSubmit={addNote} className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-2">
-         <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="عنوان" className="w-full p-2 border border-amber-200 rounded-lg outline-none" />
-         <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="متن..." className="w-full p-2 border border-amber-200 rounded-lg h-20 outline-none" />
-         <button className="w-full bg-amber-500 text-white py-2 rounded-lg font-bold">ذخیره</button>
-      </form>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-         {notes.map(n => (
-           <div key={n.id} className="bg-white p-5 rounded-xl border border-amber-100 shadow-sm relative group hover:-translate-y-1 transition-transform">
-              <h4 className="font-bold text-lg mb-2 text-amber-900">{n.title}</h4>
-              <p className="text-sm text-slate-600 whitespace-pre-wrap">{n.text}</p>
-              <button onClick={() => deleteDoc(doc(db, 'notes', n.id))} className="absolute top-2 left-2 text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
-           </div>
-         ))}
-      </div>
-    </div>
-  );
-}
+        function MealsApp() {
+            const [meals, setMeals] = useState({});
+            const week = ['شنبه', 'یک‌شنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'];
 
-function HealthApp({ user }) {
-    const [meds, setMeds] = useState([]);
-    const [newMed, setNewMed] = useState('');
-    const [person, setPerson] = useState('بهزاد (پدر)');
-    const [time, setTime] = useState('صبح');
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(collection(db, 'meals'), (snap) => {
+                const data = {};
+                snap.forEach(d => data[d.id] = d.data());
+                setMeals(data);
+                });
+            }, []);
 
-    useEffect(() => {
-        if(!db) return;
-        return onSnapshot(query(collection(db, 'medications')), (snap) => setMeds(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-    }, []);
+            const updateMeal = (day, type, value) => {
+                setDoc(doc(db, 'meals', day), { ...meals[day], [type]: value }, { merge: true });
+            };
 
-    const addMed = async (e) => {
-        e.preventDefault();
-        if(!newMed) return;
-        await addDoc(collection(db, 'medications'), { name: newMed, person, time, createdAt: serverTimestamp() });
-        setNewMed('');
-    };
-
-    return (
-        <div className="space-y-6">
-             <div className="bg-red-50 p-4 rounded-xl border border-red-100 space-y-4">
-                 <h3 className="font-bold text-red-800 flex items-center gap-2"><Pill size={20}/> افزودن دارو</h3>
-                 <form onSubmit={addMed} className="flex flex-col md:flex-row gap-2">
-                     <input value={newMed} onChange={e=>setNewMed(e.target.value)} placeholder="نام دارو" className="flex-1 p-2 rounded-lg border-red-200" />
-                     <select value={person} onChange={e=>setPerson(e.target.value)} className="p-2 rounded-lg border-red-200 bg-white">
-                         {FAMILY_MEMBERS.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                     </select>
-                     <select value={time} onChange={e=>setTime(e.target.value)} className="p-2 rounded-lg border-red-200 bg-white w-24">
-                         <option>صبح</option><option>ظهر</option><option>شب</option>
-                     </select>
-                     <button className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold">ثبت</button>
-                 </form>
-             </div>
-             <div className="space-y-2">
-                 {meds.map(m => (
-                     <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100">
-                         <div className="flex items-center gap-4">
-                             <div className="w-10 h-10 rounded-full bg-red-100 text-red-500 flex items-center justify-center"><HeartPulse size={18} /></div>
-                             <div>
-                                 <h4 className="font-bold">{m.name}</h4>
-                                 <p className="text-xs text-slate-500">👤 {m.person} | ⏰ {m.time}</p>
-                             </div>
-                         </div>
-                         <button onClick={()=>deleteDoc(doc(db, 'medications', m.id))}><Trash2 size={16} className="text-slate-300 hover:text-red-500"/></button>
-                     </div>
-                 ))}
-             </div>
-        </div>
-    );
-}
-
-function MealsApp() {
-  const [meals, setMeals] = useState({});
-  const week = ['شنبه', 'یک‌شنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'];
-
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(collection(db, 'meals'), (snap) => {
-      const data = {};
-      snap.forEach(d => data[d.id] = d.data());
-      setMeals(data);
-    });
-  }, []);
-
-  const updateMeal = (day, type, value) => {
-     setDoc(doc(db, 'meals', day), { ...meals[day], [type]: value }, { merge: true });
-  };
-
-  return (
-    <div className="space-y-4">
-       <div className="text-center mb-6">
-          <h3 className="font-black text-2xl text-orange-600 mb-1">بوفه خانگی 🍲</h3>
-       </div>
-       <div className="grid gap-3">
-       {week.map(day => (
-           <div key={day} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4">
-               <div className="w-24 font-bold text-slate-700">{day}</div>
-               <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-                   <div className="flex items-center gap-2 bg-orange-50 p-2 rounded-lg">
-                       <span className="text-xs text-orange-400 font-bold w-8">ناهار:</span>
-                       <input value={meals[day]?.lunch || ''} onChange={(e) => updateMeal(day, 'lunch', e.target.value)} placeholder="..." className="flex-1 bg-transparent text-sm outline-none"/>
-                       <Utensils size={14} className="text-orange-300" />
-                   </div>
-                   <div className="flex items-center gap-2 bg-indigo-50 p-2 rounded-lg">
-                       <span className="text-xs text-indigo-400 font-bold w-8">شام:</span>
-                       <input value={meals[day]?.dinner || ''} onChange={(e) => updateMeal(day, 'dinner', e.target.value)} placeholder="..." className="flex-1 bg-transparent text-sm outline-none"/>
-                       <UtensilsCrossed size={14} className="text-indigo-300" />
-                   </div>
-               </div>
-           </div>
-       ))}
-       </div>
-    </div>
-  );
-}
-
-function WifiApp({ user }) {
-  const [tokens, setTokens] = useState([]);
-
-  useEffect(() => {
-    if(!db) return;
-    return onSnapshot(query(collection(db, 'tokens'), orderBy('createdAt', 'desc')), 
-    (snap) => setTokens(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-  }, []);
-
-  const addToken = async (type) => {
-    await addDoc(collection(db, 'tokens'), { type, amount: type === 'wifi' ? '2 ساعت' : '1 ساعت', status: 'active', createdBy: user.name, createdAt: serverTimestamp() });
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="bg-indigo-600 rounded-3xl p-8 text-white text-center shadow-xl">
-        <Wifi size={40} className="mx-auto mb-3 opacity-80" />
-        <h2 className="text-2xl font-bold mb-4">کنترل سنتر</h2>
-        <div className="flex justify-center gap-4">
-          <button onClick={() => addToken('wifi')} className="bg-white text-indigo-700 px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">+ نت</button>
-          <button onClick={() => addToken('phone')} className="bg-indigo-800 text-white px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">+ بازی</button>
-        </div>
-      </div>
-      <div className="space-y-3">
-        {tokens.map(t => (
-          <div key={t.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center">
-            <div className="flex items-center gap-4">
-               <div className={`p-3 rounded-xl ${t.type === 'wifi' ? 'bg-blue-100' : 'bg-pink-100'}`}>{t.type === 'wifi' ? <Wifi size={20}/> : <Smartphone size={20}/>}</div>
-               <div>
-                 <p className="font-bold text-sm">{t.type === 'wifi' ? 'اینترنت' : 'بازی'}</p>
-                 <p className="text-xs text-slate-400">{t.amount} • {t.createdBy}</p>
-               </div>
-            </div>
-            {t.status === 'active' ? (
-                <button onClick={() => updateDoc(doc(db, 'tokens', t.id), { status: 'used' })} className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg font-bold">فعال</button>
-            ) : (
-                <button onClick={() => deleteDoc(doc(db, 'tokens', t.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ChatApp({ user }) {
-    const [msgs, setMsgs] = useState([]);
-    const [txt, setTxt] = useState('');
-
-    useEffect(() => {
-        if(!db) return;
-        return onSnapshot(query(collection(db, 'messages'), orderBy('createdAt', 'asc')), (snap) => setMsgs(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-    }, []);
-
-    const send = async (e) => {
-        e.preventDefault();
-        if(!txt) return;
-        await addDoc(collection(db, 'messages'), { text: txt, sender: user.name, senderId: user.id, createdAt: serverTimestamp() });
-        setTxt('');
-    };
-
-    return (
-        <div className="flex flex-col h-[70vh] bg-white rounded-2xl border shadow-sm overflow-hidden">
-            <div className="bg-teal-50 p-4 border-b text-teal-800 font-bold">گفتگوی خانوادگی</div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
-                {msgs.map(m => (
-                    <div key={m.id} className={`flex flex-col ${m.senderId === user.id ? 'items-end' : 'items-start'}`}>
-                        <div className={`px-4 py-2 rounded-2xl max-w-[85%] text-sm shadow-sm ${m.senderId === user.id ? 'bg-teal-600 text-white rounded-br-none' : 'bg-white text-slate-800 border rounded-bl-none'}`}>{m.text}</div>
-                        <span className="text-[10px] text-slate-400 mt-1 px-1">{m.sender}</span>
+            return (
+                <div className="space-y-4">
+                <div className="text-center mb-6">
+                    <h3 className="font-black text-2xl text-orange-600 mb-1">بوفه خانگی 🍲</h3>
+                </div>
+                <div className="grid gap-3">
+                {week.map(day => (
+                    <div key={day} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4">
+                        <div className="w-24 font-bold text-slate-700">{day}</div>
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="flex items-center gap-2 bg-orange-50 p-2 rounded-lg">
+                                <span className="text-xs text-orange-400 font-bold w-8">ناهار:</span>
+                                <input value={meals[day]?.lunch || ''} onChange={(e) => updateMeal(day, 'lunch', e.target.value)} placeholder="..." className="flex-1 bg-transparent text-sm outline-none"/>
+                                <Utensils size={14} className="text-orange-300" />
+                            </div>
+                            <div className="flex items-center gap-2 bg-indigo-50 p-2 rounded-lg">
+                                <span className="text-xs text-indigo-400 font-bold w-8">شام:</span>
+                                <input value={meals[day]?.dinner || ''} onChange={(e) => updateMeal(day, 'dinner', e.target.value)} placeholder="..." className="flex-1 bg-transparent text-sm outline-none"/>
+                                <UtensilsCrossed size={14} className="text-indigo-300" />
+                            </div>
+                        </div>
                     </div>
                 ))}
-            </div>
-            <form onSubmit={send} className="p-3 bg-white border-t flex gap-2">
-                <input value={txt} onChange={e=>setTxt(e.target.value)} className="flex-1 px-4 py-3 bg-slate-100 rounded-xl outline-none" placeholder="پیام..." />
-                <button className="bg-teal-600 text-white p-3 rounded-xl"><ArrowUpCircle size={24} /></button>
-            </form>
-        </div>
-    );
-}
+                </div>
+                </div>
+            );
+        }
+
+        function WifiApp({ user }) {
+            const [tokens, setTokens] = useState([]);
+
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'tokens'), orderBy('createdAt', 'desc')), 
+                (snap) => setTokens(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+            }, []);
+
+            const addToken = async (type) => {
+                await addDoc(collection(db, 'tokens'), { type, amount: type === 'wifi' ? '2 ساعت' : '1 ساعت', status: 'active', createdBy: user.name, createdAt: serverTimestamp() });
+            };
+
+            return (
+                <div className="max-w-2xl mx-auto space-y-6">
+                <div className="bg-indigo-600 rounded-3xl p-8 text-white text-center shadow-xl">
+                    <Wifi size={40} className="mx-auto mb-3 opacity-80" />
+                    <h2 className="text-2xl font-bold mb-4">کنترل سنتر</h2>
+                    <div className="flex justify-center gap-4">
+                    <button onClick={() => addToken('wifi')} className="bg-white text-indigo-700 px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">+ نت</button>
+                    <button onClick={() => addToken('phone')} className="bg-indigo-800 text-white px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform">+ بازی</button>
+                    </div>
+                </div>
+                <div className="space-y-3">
+                    {tokens.map(t => (
+                    <div key={t.id} className="bg-white p-4 rounded-2xl border flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-xl ${t.type === 'wifi' ? 'bg-blue-100' : 'bg-pink-100'}`}>{t.type === 'wifi' ? <Wifi size={20}/> : <Smartphone size={20}/>}</div>
+                        <div>
+                            <p className="font-bold text-sm">{t.type === 'wifi' ? 'اینترنت' : 'بازی'}</p>
+                            <p className="text-xs text-slate-400">{t.amount} • {t.createdBy}</p>
+                        </div>
+                        </div>
+                        {t.status === 'active' ? (
+                            <button onClick={() => updateDoc(doc(db, 'tokens', t.id), { status: 'used' })} className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg font-bold">فعال</button>
+                        ) : (
+                            <button onClick={() => deleteDoc(doc(db, 'tokens', t.id))} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                        )}
+                    </div>
+                    ))}
+                </div>
+                </div>
+            );
+        }
+
+        function ChatApp({ user }) {
+            const [msgs, setMsgs] = useState([]);
+            const [txt, setTxt] = useState('');
+
+            useEffect(() => {
+                if(!db) return;
+                return onSnapshot(query(collection(db, 'messages'), orderBy('createdAt', 'asc')), (snap) => setMsgs(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+            }, []);
+
+            const send = async (e) => {
+                e.preventDefault();
+                if(!txt) return;
+                await addDoc(collection(db, 'messages'), { text: txt, sender: user.name, senderId: user.id, createdAt: serverTimestamp() });
+                setTxt('');
+            };
+
+            return (
+                <div className="flex flex-col h-[70vh] bg-white rounded-2xl border shadow-sm overflow-hidden">
+                    <div className="bg-teal-50 p-4 border-b text-teal-800 font-bold">گفتگوی خانوادگی</div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
+                        {msgs.map(m => (
+                            <div key={m.id} className={`flex flex-col ${m.senderId === user.id ? 'items-end' : 'items-start'}`}>
+                                <div className={`px-4 py-2 rounded-2xl max-w-[85%] text-sm shadow-sm ${m.senderId === user.id ? 'bg-teal-600 text-white rounded-br-none' : 'bg-white text-slate-800 border rounded-bl-none'}`}>{m.text}</div>
+                                <span className="text-[10px] text-slate-400 mt-1 px-1">{m.sender}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <form onSubmit={send} className="p-3 bg-white border-t flex gap-2">
+                        <input value={txt} onChange={e=>setTxt(e.target.value)} className="flex-1 px-4 py-3 bg-slate-100 rounded-xl outline-none" placeholder="پیام..." />
+                        <button className="bg-teal-600 text-white p-3 rounded-xl"><ArrowUpCircle size={24} /></button>
+                    </form>
+                </div>
+            );
+        }
+
+        // رندر کردن برنامه
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<FamilyOS />);
+    </script>
+</body>
+</html>
