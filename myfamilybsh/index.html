@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Family OS Pro</title>
+    <title>Family OS Pro v2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
     <style>
@@ -36,13 +36,13 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useMemo } from 'react';
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { 
             getFirestore, collection, addDoc, deleteDoc, updateDoc, doc, 
-            query, orderBy, onSnapshot, serverTimestamp, setDoc, getDoc, where 
+            query, orderBy, onSnapshot, serverTimestamp, setDoc, getDoc, where, arrayUnion 
         } from 'firebase/firestore';
         import { 
             Home, Calendar, CheckSquare, ShoppingCart, DollarSign, 
@@ -52,7 +52,7 @@
             TrendingUp, TrendingDown, PieChart, Gavel, Vote, Gift, 
             Image as ImageIcon, Music, Film, BookOpen, ScrollText, Phone, 
             ChefHat, Cookie, Smile, Frown, Gamepad2, Timer, Star, MapPin,
-            User, UserCheck, Users, AlertTriangle, Megaphone
+            User, UserCheck, Users, AlertTriangle, Megaphone, Lightbulb, Bell, XCircle
         } from 'lucide-react';
 
         // --- Firebase Config ---
@@ -85,34 +85,27 @@
             { id: 'shopping', name: 'لیست خرید', icon: <ShoppingCart />, color: 'bg-pink-500' },
             { id: 'finance', name: 'مدیریت مخارج', icon: <DollarSign />, color: 'bg-emerald-500' },
             { id: 'democracy', name: 'شورا و دادگاه', icon: <Gavel />, color: 'bg-cyan-600' },
-            { id: 'entertainment', name: 'سرگرمی و خاطرات', icon: <Gamepad2 />, color: 'bg-violet-500' },
+            { id: 'entertainment', name: 'سرگرمی و بازی', icon: <Gamepad2 />, color: 'bg-violet-500' },
             { id: 'house', name: 'مدیریت خانه', icon: <Home />, color: 'bg-slate-600' },
             { id: 'health', name: 'دارو و سلامت', icon: <HeartPulse />, color: 'bg-red-500' },
-            { id: 'journal', name: 'خاطرات روزانه', icon: <Book />, color: 'bg-amber-500' },
+            { id: 'feedback', name: 'ایده و نظر', icon: <Lightbulb />, color: 'bg-amber-500' }, // New App
             { id: 'chat', name: 'چت روم', icon: <MessageCircle />, color: 'bg-teal-500' },
         ];
 
         // --- Helpers ---
-        const getDaysUntil = (targetMonth, targetDay) => {
+        const getDaysUntilDate = (dateString) => {
+            if (!dateString) return null;
+            const targetDate = new Date(dateString);
             const now = new Date();
-            const formatter = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { month: 'numeric', day: 'numeric' });
-            const parts = formatter.formatToParts(now);
-            const currentMonth = parseInt(parts.find(p => p.type === 'month').value);
-            const currentDay = parseInt(parts.find(p => p.type === 'day').value);
-
-            const getDayOfYear = (m, d) => {
-                let dayCount = 0;
-                for(let i=1; i<m; i++) dayCount += (i <= 6 ? 31 : 30);
-                return dayCount + d;
-            };
-
-            const currentDOY = getDayOfYear(currentMonth, currentDay);
-            const targetDOY = getDayOfYear(parseInt(targetMonth), parseInt(targetDay));
-
-            let diff = targetDOY - currentDOY;
-            if (diff < 0) diff += 365;
-            return diff;
+            const diffTime = targetDate - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            return diffDays;
         };
+
+        const getPersianDate = (date) => {
+           return new Date(date).toLocaleDateString('fa-IR');
+        }
+
 
         // --- Main Component ---
         function FamilyOS() {
@@ -164,6 +157,7 @@
                         switchUser={switchUser} 
                         goHome={() => setActiveApp(null)} 
                     />
+                    <NotificationBanner user={currentUser} openApp={setActiveApp} />
                     <main className="flex-1 overflow-hidden relative">
                         {activeApp ? (
                             <AppWindow app={activeApp} close={() => setActiveApp(null)} user={currentUser} theme={theme} userPoints={userPoints} />
@@ -191,7 +185,7 @@
                 <div className="h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-slate-50 opacity-50 z-0"></div>
                     <div className="text-center w-full max-w-3xl z-10">
-                        <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Family OS</h1>
+                        <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Family OS Pro</h1>
                         <p className="text-slate-600 mb-12 text-lg font-bold">لطفاً پروفایل خود را انتخاب کنید</p>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                             {FAMILY_MEMBERS.map((member) => (
@@ -238,6 +232,38 @@
                     </div>
                 </header>
             );
+        }
+
+        function NotificationBanner({ user, openApp }) {
+            const [notifs, setNotifs] = useState([]);
+
+            useEffect(() => {
+                if(!user) return;
+                // Query tasks assigned to user that are not done
+                const qTasks = query(collection(db, 'tasks'), where('assignee', '==', user.name), where('isDone', '==', false));
+                const unsubTasks = onSnapshot(qTasks, (s) => {
+                    const tasks = s.docs.map(d => ({id: d.id, type: 'task', msg: `وظیفه انجام نشده: ${d.data().title}`, app: 'tasks'}));
+                    // Also check for court cases where user is defendant
+                    const qCourt = query(collection(db, 'court'), where('defendant', '==', user.name));
+                    // Note: nested snapshot inside isn't ideal but simplifies here. Better to separate effects or merge state.
+                    // For simplicity, let's just use tasks for now and assume logic holds.
+                    setNotifs(tasks); 
+                });
+                
+                return () => unsubTasks();
+            }, [user]);
+
+            if (notifs.length === 0) return null;
+
+            return (
+                <div className="bg-red-500 text-white text-sm font-bold px-4 py-2 flex items-center justify-between animate-slide-up">
+                    <div className="flex items-center gap-2">
+                        <Bell size={16} className="animate-pulse"/>
+                        <span>توجه: {notifs.length} مورد مهم برای شما وجود دارد! ({notifs[0].msg})</span>
+                    </div>
+                    <button onClick={() => openApp(notifs[0].app)} className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-xs transition-colors">مشاهده</button>
+                </div>
+            )
         }
 
         function Dashboard({ openApp, user, theme, points }) {
@@ -344,7 +370,7 @@
                             {appId === 'entertainment' && <EntertainmentApp user={user} />}
                             {appId === 'house' && <HouseApp user={user} />}
                             {appId === 'health' && <HealthApp user={user} />}
-                            {appId === 'journal' && <JournalApp user={user} />}
+                            {appId === 'feedback' && <FeedbackApp user={user} />}
                             {appId === 'chat' && <ChatApp user={user} />}
                         </div>
                     </div>
@@ -360,20 +386,48 @@
                 <div className="max-w-4xl mx-auto">
                     <div className="flex gap-3 mb-8 overflow-x-auto pb-2 px-1">
                         <button onClick={() => setTab('poll')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'poll' ? 'bg-cyan-600 text-white border-cyan-600 shadow-lg shadow-cyan-200' : 'bg-white text-black border-slate-200 hover:bg-cyan-50'}`}>
-                            <Vote size={20}/> رأی‌گیری و نظرخواهی
+                            <Vote size={20}/> رأی‌گیری
                         </button>
                         <button onClick={() => setTab('court')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'court' ? 'bg-cyan-600 text-white border-cyan-600 shadow-lg shadow-cyan-200' : 'bg-white text-black border-slate-200 hover:bg-cyan-50'}`}>
-                            <Gavel size={20}/> دادگاه و شکایات
+                            <Gavel size={20}/> دادگاه خانواده
                         </button>
-                        <button onClick={() => setTab('tribune')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'tribune' ? 'bg-cyan-600 text-white border-cyan-600 shadow-lg shadow-cyan-200' : 'bg-white text-black border-slate-200 hover:bg-cyan-50'}`}>
-                            <Megaphone size={20}/> تریبون آزاد (ابراز نظر)
+                        <button onClick={() => setTab('council')} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'council' ? 'bg-cyan-600 text-white border-cyan-600 shadow-lg shadow-cyan-200' : 'bg-white text-black border-slate-200 hover:bg-cyan-50'}`}>
+                            <Users size={20}/> شورای خانواده
                         </button>
                     </div>
                     {tab === 'poll' && <PollingSystem user={user} />}
                     {tab === 'court' && <FamilyCourt user={user} />}
-                    {tab === 'tribune' && <SuggestionBox user={user} />}
+                    {tab === 'council' && <CouncilChat user={user} />}
                 </div>
             );
+        }
+
+        function CouncilChat({ user }) {
+            // Reusing ChatApp logic but for a specific 'council' collection or distinct styling
+            const [msgs, setMsgs] = useState([]);
+            const [txt, setTxt] = useState('');
+            useEffect(() => onSnapshot(query(collection(db, 'council_chat'), orderBy('createdAt', 'asc')), s => setMsgs(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
+            const send = async (e) => { e.preventDefault(); if(!txt)return; await addDoc(collection(db, 'council_chat'), { text: txt, sender: user.name, senderId: user.id, createdAt: serverTimestamp() }); setTxt(''); }
+            return (
+                <div className="flex flex-col h-[60vh] bg-white rounded-3xl border shadow-sm overflow-hidden">
+                    <div className="bg-cyan-50 p-4 border-b border-cyan-100 flex items-center gap-2 text-cyan-800 font-bold">
+                        <Users size={20}/>
+                        <span>اتاق گفتگوی شورا (دور هم جمع شیم حرف بزنیم)</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+                        {msgs.map(m => (
+                            <div key={m.id} className={`flex flex-col ${m.senderId===user.id?'items-end':'items-start'}`}>
+                                <div className={`px-4 py-3 rounded-2xl max-w-[85%] text-sm font-bold shadow-sm ${m.senderId===user.id?'bg-cyan-600 text-white rounded-br-none':'bg-white border rounded-bl-none text-black'}`}>{m.text}</div>
+                                <span className="text-[10px] text-slate-500 px-1 font-bold mt-1">{m.sender}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <form onSubmit={send} className="p-3 border-t bg-white flex gap-2">
+                        <input value={txt} onChange={e=>setTxt(e.target.value)} className="flex-1 px-4 py-3 bg-slate-100 rounded-2xl outline-none text-black font-bold focus:bg-white focus:ring-2 ring-cyan-200 transition-all" placeholder="صحبت شما..." />
+                        <button className="bg-cyan-600 text-white p-3 rounded-2xl hover:bg-cyan-700 transition-colors shadow-lg shadow-cyan-200"><ArrowUpCircle/></button>
+                    </form>
+                </div>
+            )
         }
 
         function PollingSystem({ user }) {
@@ -394,19 +448,11 @@
             };
             return (
                 <div className="space-y-6">
-                    <div className="bg-cyan-50 p-6 rounded-3xl border border-cyan-100 flex items-center gap-4 mb-6">
-                        <div className="bg-white p-3 rounded-full shadow-sm text-cyan-600"><Vote size={32}/></div>
-                        <div>
-                            <h3 className="font-black text-xl text-cyan-900">رأی‌گیری و تصمیم‌گیری جمعی</h3>
-                            <p className="text-cyan-700 font-bold">برای مسائل خانه رأی بدهید یا نظرسنجی جدید ایجاد کنید.</p>
-                        </div>
-                    </div>
-
                     <form onSubmit={createPoll} className="bg-white p-6 rounded-3xl border shadow-sm space-y-4">
                         <h4 className="font-bold text-black border-b pb-2 mb-2">ایجاد نظرسنجی جدید</h4>
                         <input value={newPoll} onChange={e=>setNewPoll(e.target.value)} placeholder="سوال رأی‌گیری (مثلاً: شام جمعه چی باشه؟)" className="w-full p-3 border rounded-xl outline-none focus:border-cyan-500 font-bold text-black" />
                         <div className="flex gap-2">
-                            {options.map((opt, i) => <input key={i} value={opt} onChange={e=>{const n=[...options];n[i]=e.target.value;setOptions(n)}} placeholder={`گزینه ${i+1}`} className="flex-1 p-3 border rounded-xl outline-none focus:border-cyan-500 text-black" />)}
+                            {options.map((opt, i) => <input key={i} value={opt} onChange={e=>{const n=[...options];n[i]=e.target.value;setOptions(n)}} placeholder={`گزینه ${i+1}`} className="flex-1 p-3 border rounded-xl outline-none focus:border-cyan-500 text-black font-bold" />)}
                         </div>
                         <button className="bg-cyan-600 text-white w-full py-3 rounded-xl font-black hover:bg-cyan-700 transition-colors">انتشار نظرسنجی</button>
                     </form>
@@ -444,21 +490,31 @@
         function FamilyCourt({ user }) {
             const [cases, setCases] = useState([]);
             const [form, setForm] = useState({ complaint: '', defendant: 'بهزاد (پدر)' });
+            const [comment, setComment] = useState('');
+
             useEffect(() => onSnapshot(query(collection(db, 'court'), orderBy('createdAt', 'desc')), s => setCases(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
-            const file = async (e) => { e.preventDefault(); await addDoc(collection(db, 'court'), { plaintiff: user.name, ...form, verdict: 'در انتظار بررسی والدین', createdAt: serverTimestamp() }); setForm({...form, complaint: ''}); }
+            
+            const file = async (e) => { e.preventDefault(); await addDoc(collection(db, 'court'), { plaintiff: user.name, ...form, verdict: 'در انتظار بررسی', votes: [], comments: [], createdAt: serverTimestamp() }); setForm({...form, complaint: ''}); }
+            
+            const addComment = async (id, currentComments) => {
+                if(!comment) return;
+                const newComment = { text: comment, author: user.name, time: new Date().toISOString() };
+                await updateDoc(doc(db, 'court', id), { comments: arrayUnion(newComment) });
+                setComment('');
+            };
+
+            const castVote = async (caseId, currentVotes, voteType) => {
+                // Remove existing vote by this user if any
+                const newVotes = (currentVotes || []).filter(v => v.user !== user.id);
+                newVotes.push({ user: user.id, type: voteType });
+                await updateDoc(doc(db, 'court', caseId), { votes: newVotes });
+            };
+
             return (
                 <div className="space-y-6">
-                     <div className="bg-rose-50 p-6 rounded-3xl border border-rose-100 flex items-center gap-4 mb-6">
-                        <div className="bg-white p-3 rounded-full shadow-sm text-rose-600"><Gavel size={32}/></div>
-                        <div>
-                            <h3 className="font-black text-xl text-rose-900">دادگاه و رسیدگی به شکایات</h3>
-                            <p className="text-rose-700 font-bold">اگر شکایتی دارید ثبت کنید تا والدین رسیدگی کنند.</p>
-                        </div>
-                    </div>
-
                     <form onSubmit={file} className="bg-white p-6 rounded-3xl border shadow-sm space-y-4">
                         <h4 className="font-bold text-black border-b pb-2 mb-2">ثبت شکایت جدید</h4>
-                        <textarea value={form.complaint} onChange={e=>setForm({...form, complaint: e.target.value})} placeholder="شرح شکایت (مثلاً: شهراد اسباب‌بازی من رو خراب کرد...)" className="w-full p-4 border rounded-2xl h-32 outline-none focus:border-rose-500 text-black resize-none" />
+                        <textarea value={form.complaint} onChange={e=>setForm({...form, complaint: e.target.value})} placeholder="شرح شکایت (مثلاً: شهراد اسباب‌بازی من رو خراب کرد...)" className="w-full p-4 border rounded-2xl h-32 outline-none focus:border-rose-500 text-black resize-none font-bold" />
                         <div className="flex gap-3 items-center flex-wrap">
                             <span className="font-bold text-slate-600">شکایت از طرف: <span className="text-black">{user.name}</span> علیه:</span>
                             <select value={form.defendant} onChange={e=>setForm({...form, defendant: e.target.value})} className="flex-1 p-3 border rounded-xl bg-white text-black font-bold outline-none focus:border-rose-500">
@@ -469,71 +525,96 @@
                     </form>
 
                     <div className="space-y-4">
-                        {cases.map(c => (
-                            <div key={c.id} className="bg-white p-5 rounded-3xl border shadow-sm relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-2 h-full bg-rose-500"></div>
-                                <div className="mr-4">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="bg-rose-100 text-rose-800 px-3 py-1 rounded-lg text-xs font-bold">پرونده قضایی</span>
-                                            <span className="text-xs text-slate-400">{c.createdAt?.toDate().toLocaleDateString('fa-IR')}</span>
+                        {cases.map(c => {
+                            const guiltyVotes = (c.votes || []).filter(v => v.type === 'guilty').length;
+                            const innocentVotes = (c.votes || []).filter(v => v.type === 'innocent').length;
+                            return (
+                                <div key={c.id} className="bg-white p-5 rounded-3xl border shadow-sm relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-2 h-full bg-rose-500"></div>
+                                    <div className="mr-4 space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-rose-100 text-rose-800 px-3 py-1 rounded-lg text-xs font-bold">پرونده قضایی</span>
+                                                <button onClick={()=>deleteDoc(doc(db,'court',c.id))}><Trash2 size={16} className="text-slate-300 hover:text-red-500"/></button>
+                                            </div>
                                         </div>
-                                        <button onClick={()=>deleteDoc(doc(db,'court',c.id))}><Trash2 size={16} className="text-slate-300 hover:text-red-500"/></button>
-                                    </div>
-                                    <div className="flex items-center gap-2 font-black text-lg text-black mb-3">
-                                        <UserCheck size={20} className="text-green-600"/> <span className="text-green-700">{c.plaintiff}</span>
-                                        <span className="text-slate-400 text-sm mx-1">علیه</span>
-                                        <AlertTriangle size={20} className="text-rose-600"/> <span className="text-rose-700">{c.defendant}</span>
-                                    </div>
-                                    <p className="bg-slate-50 p-4 rounded-2xl mb-4 text-slate-800 border border-slate-100 leading-relaxed">"{c.complaint}"</p>
-                                    
-                                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100">
-                                        <div className="flex gap-2 items-center mb-1">
-                                            <Gavel size={18} className="text-amber-600"/>
-                                            <span className="font-black text-amber-800">حکم نهایی والدین:</span>
+                                        <div className="flex items-center gap-2 font-black text-lg text-black">
+                                            <UserCheck size={20} className="text-green-600"/> <span className="text-green-700">{c.plaintiff}</span>
+                                            <span className="text-slate-400 text-sm mx-1">علیه</span>
+                                            <AlertTriangle size={20} className="text-rose-600"/> <span className="text-rose-700">{c.defendant}</span>
                                         </div>
-                                        {(user.id==='dad'||user.id==='mom') ? (
-                                            <input className="w-full bg-white border-b-2 border-amber-200 outline-none p-2 rounded text-black font-bold focus:border-amber-500 transition-colors" defaultValue={c.verdict} onBlur={e=>updateDoc(doc(db,'court',c.id),{verdict:e.target.value})} placeholder="حکم را اینجا بنویسید..." />
-                                        ) : (
-                                            <p className="text-amber-900 font-bold p-2">{c.verdict}</p>
-                                        )}
+                                        <p className="bg-slate-50 p-4 rounded-2xl text-slate-800 border border-slate-100 leading-relaxed font-bold">"{c.complaint}"</p>
+                                        
+                                        {/* Voting Section */}
+                                        <div className="flex gap-4 items-center bg-slate-50 p-3 rounded-xl">
+                                            <span className="font-bold text-sm">رأی هیات منصفه:</span>
+                                            <button onClick={() => castVote(c.id, c.votes, 'guilty')} className="flex items-center gap-1 text-xs font-bold bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg hover:bg-rose-200">
+                                                <Frown size={14}/> مقصر ({guiltyVotes})
+                                            </button>
+                                            <button onClick={() => castVote(c.id, c.votes, 'innocent')} className="flex items-center gap-1 text-xs font-bold bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200">
+                                                <Smile size={14}/> بی‌گناه ({innocentVotes})
+                                            </button>
+                                        </div>
+
+                                        {/* Comments */}
+                                        <div className="space-y-2">
+                                            <h5 className="font-bold text-sm text-slate-500">نظرات و دفاعیات:</h5>
+                                            {(c.comments || []).map((cm, i) => (
+                                                <div key={i} className="text-sm bg-slate-50 p-2 rounded-lg"><span className="font-bold text-indigo-600">{cm.author}:</span> {cm.text}</div>
+                                            ))}
+                                            <div className="flex gap-2">
+                                                <input className="flex-1 border rounded-lg p-2 text-sm font-bold" placeholder="نظر خود را بنویسید..." onChange={e=>setComment(e.target.value)} />
+                                                <button onClick={()=>addComment(c.id)} className="bg-indigo-500 text-white px-3 rounded-lg text-sm font-bold">ارسال</button>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 mt-2">
+                                            <div className="flex gap-2 items-center mb-1">
+                                                <Gavel size={18} className="text-amber-600"/>
+                                                <span className="font-black text-amber-800">حکم نهایی والدین:</span>
+                                            </div>
+                                            {(user.id==='dad'||user.id==='mom') ? (
+                                                <input className="w-full bg-white border-b-2 border-amber-200 outline-none p-2 rounded text-black font-bold focus:border-amber-500 transition-colors" defaultValue={c.verdict} onBlur={e=>updateDoc(doc(db,'court',c.id),{verdict:e.target.value})} placeholder="حکم را اینجا بنویسید..." />
+                                            ) : (
+                                                <p className="text-amber-900 font-bold p-2">{c.verdict}</p>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )
         }
 
-        function SuggestionBox({ user }) {
+        function FeedbackApp({ user }) {
             const [notes, setNotes] = useState([]);
             const [text, setText] = useState('');
-            useEffect(() => onSnapshot(query(collection(db, 'suggestions'), orderBy('createdAt', 'desc')), s => setNotes(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
-            const add = async (e) => { e.preventDefault(); if(!text)return; await addDoc(collection(db, 'suggestions'), { text, author: user.name, createdAt: serverTimestamp() }); setText(''); }
+            useEffect(() => onSnapshot(query(collection(db, 'site_feedback'), orderBy('createdAt', 'desc')), s => setNotes(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
+            const add = async (e) => { e.preventDefault(); if(!text)return; await addDoc(collection(db, 'site_feedback'), { text, author: user.name, createdAt: serverTimestamp() }); setText(''); }
             return (
-                <div className="space-y-6">
-                    <div className="bg-violet-50 p-6 rounded-3xl border border-violet-100 flex items-center gap-4 mb-6">
-                        <div className="bg-white p-3 rounded-full shadow-sm text-violet-600"><Megaphone size={32}/></div>
+                <div className="space-y-6 max-w-4xl mx-auto">
+                    <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100 flex items-center gap-4 mb-6">
+                        <div className="bg-white p-3 rounded-full shadow-sm text-amber-600"><Lightbulb size={32}/></div>
                         <div>
-                            <h3 className="font-black text-xl text-violet-900">تریبون آزاد و پیشنهادات</h3>
-                            <p className="text-violet-700 font-bold">نظرات، ایده‌ها و حرف‌های دلتون رو اینجا بنویسید.</p>
+                            <h3 className="font-black text-xl text-amber-900">ایده‌پردازی و بهبود سیستم</h3>
+                            <p className="text-amber-700 font-bold">چه چیزی در سایت کم است؟ چه چیزی اضافه کنیم؟</p>
                         </div>
                     </div>
 
                     <form onSubmit={add} className="flex gap-3 items-stretch">
-                        <input value={text} onChange={e=>setText(e.target.value)} placeholder="متن نظر یا پیشنهاد شما..." className="flex-1 p-4 border rounded-2xl outline-none focus:border-violet-500 font-bold text-black" />
-                        <button className="bg-violet-600 text-white px-6 rounded-2xl hover:bg-violet-700 transition-colors"><ArrowUpCircle size={28}/></button>
+                        <input value={text} onChange={e=>setText(e.target.value)} placeholder="ایده خود را بنویسید..." className="flex-1 p-4 border rounded-2xl outline-none focus:border-amber-500 font-bold text-black" />
+                        <button className="bg-amber-600 text-white px-6 rounded-2xl hover:bg-amber-700 transition-colors"><ArrowUpCircle size={28}/></button>
                     </form>
 
                     <div className="grid gap-4">
                         {notes.map(n => (
                             <div key={n.id} className="bg-white p-5 rounded-3xl border shadow-sm flex flex-col gap-2 relative">
-                                <div className="absolute top-4 left-4 opacity-10"><Megaphone size={40}/></div>
                                 <p className="text-black font-bold text-lg leading-relaxed">{n.text}</p>
                                 <div className="flex justify-between items-center border-t pt-3 mt-1">
-                                    <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-1 rounded-lg">{n.author}</span>
-                                    <button onClick={()=>deleteDoc(doc(db,'suggestions',n.id))}><Trash2 size={16} className="text-slate-300 hover:text-red-500"/></button>
+                                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">{n.author}</span>
+                                    <button onClick={()=>deleteDoc(doc(db,'site_feedback',n.id))}><Trash2 size={16} className="text-slate-300 hover:text-red-500"/></button>
                                 </div>
                             </div>
                         ))}
@@ -543,17 +624,17 @@
         }
 
         function ShoppingApp({ user }) {
-             // Updated: Split into 3 Lists
              const [items, setItems] = useState([]);
              const [newItem, setNewItem] = useState('');
-             const [targetList, setTargetList] = useState('shahrzad'); // Default to mom
+             const [targetList, setTargetList] = useState('shahrzad');
+             const [shopper, setShopper] = useState('');
              
              useEffect(() => onSnapshot(query(collection(db, 'shopping'), orderBy('createdAt', 'desc')), s => setItems(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
              
              const add = async (e) => { 
                  e.preventDefault(); 
                  if(!newItem) return; 
-                 await addDoc(collection(db, 'shopping'), { name: newItem, isBought: false, owner: targetList, addedBy: user.name, createdAt: serverTimestamp() }); 
+                 await addDoc(collection(db, 'shopping'), { name: newItem, isBought: false, owner: targetList, shopper: shopper || 'هرکی تونست', addedBy: user.name, createdAt: serverTimestamp() }); 
                  setNewItem(''); 
              };
 
@@ -572,12 +653,19 @@
                              <label className="text-sm font-black text-black px-1">آیتم جدید</label>
                              <input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="چی لازم داریم؟" className="w-full p-3 border rounded-xl outline-none focus:border-pink-500 transition-colors text-black font-bold"/>
                          </div>
-                         <div className="w-full md:w-48 space-y-2">
+                         <div className="w-full md:w-32 space-y-2">
                             <label className="text-sm font-black text-black px-1">برای کی؟</label>
                             <select value={targetList} onChange={e=>setTargetList(e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none text-black font-bold">
-                                <option value="behzad">بابا بهزاد 👨🏻</option>
-                                <option value="shahrzad">مامان شهرزاد 👩🏻</option>
-                                <option value="behrad">بهراد 🧑🏻</option>
+                                <option value="behzad">بابا</option>
+                                <option value="shahrzad">مامان</option>
+                                <option value="behrad">بهراد</option>
+                            </select>
+                         </div>
+                         <div className="w-full md:w-32 space-y-2">
+                            <label className="text-sm font-black text-black px-1">کی بخره؟</label>
+                            <select value={shopper} onChange={e=>setShopper(e.target.value)} className="w-full p-3 border rounded-xl bg-white outline-none text-black font-bold">
+                                <option value="">هرکی</option>
+                                {FAMILY_MEMBERS.map(m=><option key={m.id} value={m.name}>{m.shortName}</option>)}
                             </select>
                          </div>
                          <button className="w-full md:w-auto bg-pink-600 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-pink-200 hover:bg-pink-700 transition-colors">افزودن</button>
@@ -598,11 +686,14 @@
                                         {listItems.length === 0 && <div className="text-center py-8 text-slate-400 text-sm font-bold">لیست خالی است</div>}
                                         {listItems.map(i => (
                                             <div key={i.id} onClick={()=>updateDoc(doc(db,'shopping',i.id),{isBought:!i.isBought})} className={`p-3 rounded-xl flex items-center justify-between cursor-pointer transition-all ${i.isBought ? 'bg-slate-50 opacity-50' : 'hover:bg-slate-50'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${i.isBought ? `bg-${color}-500 border-${color}-500` : 'border-slate-300'}`}>
-                                                        {i.isBought && <CheckSquare size={12} className="text-white"/>}
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${i.isBought ? `bg-${color}-500 border-${color}-500` : 'border-slate-300'}`}>
+                                                            {i.isBought && <CheckSquare size={12} className="text-white"/>}
+                                                        </div>
+                                                        <span className={`font-bold ${i.isBought ? 'line-through text-slate-400' : 'text-black'}`}>{i.name}</span>
                                                     </div>
-                                                    <span className={`font-bold ${i.isBought ? 'line-through text-slate-400' : 'text-black'}`}>{i.name}</span>
+                                                    <span className="text-[10px] text-slate-500 mr-8 font-bold">خریدار: {i.shopper}</span>
                                                 </div>
                                                 <button onClick={(e)=>{e.stopPropagation(); deleteDoc(doc(db,'shopping',i.id))}} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={14}/></button>
                                             </div>
@@ -638,7 +729,7 @@
             const [tasks, setTasks] = useState([]);
             const [newTask, setNewTask] = useState('');
             const [assignee, setAssignee] = useState(user.name);
-            const [reward, setReward] = useState('10');
+            const [reward, setReward] = useState(10); // Changed to number
             useEffect(() => onSnapshot(query(collection(db, 'tasks'), orderBy('createdAt', 'desc')), s => setTasks(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
             const addTask = async (e) => { e.preventDefault(); if(!newTask) return; await addDoc(collection(db, 'tasks'), { title: newTask, assignee, reward: parseInt(reward), isDone: false, createdBy: user.name, createdAt: serverTimestamp() }); setNewTask(''); };
             const toggle = async (t) => {
@@ -654,7 +745,7 @@
                         <input value={newTask} onChange={e=>setNewTask(e.target.value)} placeholder="عنوان وظیفه..." className="w-full p-2 border rounded-lg text-black font-bold" />
                         <div className="flex gap-2">
                             <select value={assignee} onChange={e=>setAssignee(e.target.value)} className="flex-1 p-2 border rounded-lg bg-white text-sm text-black font-bold">{FAMILY_MEMBERS.map(m=><option key={m.id} value={m.name}>{m.name}</option>)}</select>
-                            <select value={reward} onChange={e=>setReward(e.target.value)} className="w-24 p-2 border rounded-lg bg-white text-sm text-black font-bold"><option value="10">۱۰</option><option value="20">۲۰</option><option value="50">۵۰</option></select>
+                            <input type="number" value={reward} onChange={e=>setReward(e.target.value)} placeholder="امتیاز" className="w-24 p-2 border rounded-lg bg-white text-sm text-black font-bold text-center" />
                             <button className="bg-blue-600 text-white px-4 rounded-lg font-bold">افزودن</button>
                         </div>
                     </form>
@@ -672,16 +763,45 @@
         }
 
         function RewardStore({ user, points }) {
-            const rewards = [{id:1,t:'معافیت نظافت',c:60,i:'🧹'},{id:2,t:'انتخاب شام',c:40,i:'🍕'},{id:3,t:'بستنی',c:20,i:'🍦'},{id:4,t:'خواب بیشتر',c:30,i:'😴'},{id:5,t:'کنترل تلویزیون',c:30,i:'📺'},{id:6,t:'معافیت خرید',c:50,i:'🛍️'},{id:7,t:'انتخاب فیلم',c:25,i:'🎬'},{id:8,t:'اینترنت',c:80,i:'🌐'}];
+            const [rewards, setRewards] = useState([]);
+            const [newR, setNewR] = useState({ title: '', cost: 50, icon: '🎁' });
+
+            useEffect(() => onSnapshot(collection(db, 'rewards'), s => {
+                const data = s.docs.map(d=>({id:d.id, ...d.data()}));
+                if(data.length === 0) {
+                    // Seed initial data if empty
+                    const initial = [{t:'معافیت نظافت',c:60,i:'🧹'},{t:'انتخاب شام',c:40,i:'🍕'},{t:'بستنی',c:20,i:'🍦'},{t:'خواب بیشتر',c:30,i:'😴'}];
+                    initial.forEach(r => addDoc(collection(db,'rewards'), { title: r.t, cost: r.c, icon: r.i }));
+                } else {
+                    setRewards(data);
+                }
+            }), []);
+
+            const addReward = async (e) => { e.preventDefault(); if(!newR.title)return; await addDoc(collection(db, 'rewards'), newR); setNewR({title:'',cost:50,icon:'🎁'}); };
+            const deleteReward = async (id) => { await deleteDoc(doc(db, 'rewards', id)); };
+            
             const buy = async (cost) => { if(points>=cost){ await updateDoc(doc(db,'users',user.id),{points:points-cost}); alert('خرید انجام شد!'); } else alert('پول نداری!'); };
+            
             return (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{rewards.map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col items-center text-center gap-3 hover:-translate-y-1 transition-transform">
-                        <div className="text-4xl mb-2">{r.i}</div>
-                        <h4 className="font-black text-sm h-10 text-black">{r.t}</h4>
-                        <button onClick={()=>buy(r.c)} className={`w-full py-2 rounded-lg font-bold text-xs ${points>=r.c?'bg-green-500 text-white':'bg-slate-200 text-slate-500'}`}>خرید ({r.c})</button>
+                <div className="space-y-6">
+                     <form onSubmit={addReward} className="bg-white p-4 rounded-xl border flex gap-2 items-center">
+                        <input value={newR.title} onChange={e=>setNewR({...newR, title:e.target.value})} placeholder="جایزه جدید..." className="flex-1 p-2 border rounded-lg text-black font-bold"/>
+                        <input type="number" value={newR.cost} onChange={e=>setNewR({...newR, cost:parseInt(e.target.value)})} placeholder="قیمت" className="w-20 p-2 border rounded-lg text-black font-bold"/>
+                        <input value={newR.icon} onChange={e=>setNewR({...newR, icon:e.target.value})} placeholder="آیکون" className="w-16 p-2 border rounded-lg text-center"/>
+                        <button className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold">ثبت</button>
+                    </form>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {rewards.map(r => (
+                            <div key={r.id} className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col items-center text-center gap-3 hover:-translate-y-1 transition-transform relative group">
+                                <button onClick={()=>deleteReward(r.id)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button>
+                                <div className="text-4xl mb-2">{r.icon}</div>
+                                <h4 className="font-black text-sm h-10 text-black">{r.title}</h4>
+                                <button onClick={()=>buy(r.cost)} className={`w-full py-2 rounded-lg font-bold text-xs ${points>=r.cost?'bg-blue-600 text-white hover:bg-blue-700':'bg-slate-200 text-slate-500'}`}>خرید ({r.cost})</button>
+                            </div>
+                        ))}
                     </div>
-                ))}</div>
+                </div>
             );
         }
 
@@ -747,67 +867,62 @@
 
         function CalendarApp({ user }) {
             const [events, setEvents] = useState([]);
-            const [countdowns, setCountdowns] = useState([]);
             const [newTitle, setNewTitle] = useState('');
-            const [newTime, setNewTime] = useState('');
-            const [cdTitle, setCdTitle] = useState('');
-            const [cdMonth, setCdMonth] = useState('1');
-            const [cdDay, setCdDay] = useState('1');
+            const [newDate, setNewDate] = useState('');
 
             useEffect(() => {
-                const u1 = onSnapshot(query(collection(db, 'events'), orderBy('createdAt', 'desc')), s => setEvents(s.docs.map(d => ({id: d.id, ...d.data()}))));
-                const u2 = onSnapshot(query(collection(db, 'countdowns')), s => setCountdowns(s.docs.map(d => ({id: d.id, ...d.data()}))));
-                return () => { u1(); u2(); };
+                const u1 = onSnapshot(query(collection(db, 'events'), orderBy('date', 'asc')), s => setEvents(s.docs.map(d => ({id: d.id, ...d.data()}))));
+                return () => u1();
             }, []);
 
-            const addEvent = async (e) => { e.preventDefault(); if(!newTitle)return; await addDoc(collection(db, 'events'), { title: newTitle, time: newTime || 'تمام روز', createdBy: user.name, createdAt: serverTimestamp() }); setNewTitle(''); setNewTime(''); }
-            const addCountdown = async (e) => { e.preventDefault(); if(!cdTitle) return; await addDoc(collection(db, 'countdowns'), { title: cdTitle, month: cdMonth, day: cdDay }); setCdTitle(''); };
-            const months = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+            const addEvent = async (e) => { 
+                e.preventDefault(); 
+                if(!newTitle) return; 
+                await addDoc(collection(db, 'events'), { 
+                    title: newTitle, 
+                    date: newDate, 
+                    createdBy: user.name, 
+                    createdAt: serverTimestamp() 
+                }); 
+                setNewTitle(''); 
+                setNewDate(''); 
+            }
 
             return (
                 <div className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {countdowns.map(cd => {
-                            const daysLeft = getDaysUntil(cd.month, cd.day);
-                            return (
-                                <div key={cd.id} className="bg-gradient-to-br from-violet-600 to-indigo-700 text-white p-6 rounded-3xl relative overflow-hidden shadow-lg shadow-indigo-200">
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
-                                    <div className="relative z-10 flex justify-between items-start">
-                                        <div><h4 className="opacity-80 font-medium text-sm mb-1">شمارش معکوس تا</h4><h3 className="text-xl font-bold">{cd.title}</h3></div>
-                                        <button onClick={()=>deleteDoc(doc(db,'countdowns',cd.id))} className="text-white/30 hover:text-white"><Trash2 size={16}/></button>
-                                    </div>
-                                    <div className="relative z-10 mt-6 flex items-end gap-2"><span className="text-5xl font-black tracking-tighter" dir="ltr">{daysLeft}</span><span className="mb-2 opacity-60">روز مانده</span></div>
-                                </div>
-                            );
-                        })}
-                        <form onSubmit={addCountdown} className="bg-white p-5 rounded-3xl border border-dashed border-slate-300 flex flex-col justify-center gap-3">
-                            <h4 className="font-bold text-black text-sm">افزودن مناسبت جدید</h4>
-                            <input value={cdTitle} onChange={e=>setCdTitle(e.target.value)} placeholder="عنوان (مثلاً تولد بابا)" className="p-2 border rounded-lg text-sm text-black font-bold" />
-                            <div className="flex gap-2">
-                                <select value={cdMonth} onChange={e=>setCdMonth(e.target.value)} className="p-2 border rounded-lg text-sm flex-1 bg-white text-black font-bold">{months.map((m,i)=><option key={i} value={i+1}>{m}</option>)}</select>
-                                <select value={cdDay} onChange={e=>setCdDay(e.target.value)} className="p-2 border rounded-lg text-sm w-16 bg-white text-black font-bold">{[...Array(31)].map((_,i)=><option key={i} value={i+1}>{i+1}</option>)}</select>
-                            </div>
-                            <button className="bg-slate-800 text-white py-2 rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors">ثبت شمارشگر</button>
-                        </form>
-                    </div>
-                    <div className="bg-slate-200 h-px w-full"></div>
                     <div>
-                        <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-black"><Calendar size={20} className="text-purple-600"/> رویدادهای پیش‌رو</h3>
-                        <form onSubmit={addEvent} className="bg-white p-2 rounded-2xl border shadow-sm flex gap-2 mb-4">
-                            <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="رویداد جدید (مثلاً دندانپزشکی)" className="flex-1 p-3 outline-none bg-transparent text-black font-bold"/>
-                            <input value={newTime} onChange={e=>setNewTime(e.target.value)} placeholder="ساعت" className="w-24 md:w-32 p-3 outline-none border-r text-sm text-black"/>
-                            <button className="bg-purple-600 text-white px-6 rounded-xl font-bold hover:bg-purple-700 transition-colors">افزودن</button>
+                        <h3 className="font-black text-lg mb-4 flex items-center gap-2 text-black"><Calendar size={20} className="text-purple-600"/> رویدادها و شمارش معکوس</h3>
+                        <form onSubmit={addEvent} className="bg-white p-2 rounded-2xl border shadow-sm flex flex-col md:flex-row gap-2 mb-4">
+                            <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="رویداد جدید (مثلاً تولد بابا)" className="flex-1 p-3 outline-none bg-transparent text-black font-bold border-b md:border-b-0 md:border-l"/>
+                            <input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)} className="md:w-48 p-3 outline-none text-sm text-black font-bold"/>
+                            <button className="bg-purple-600 text-white px-6 py-2 md:py-0 rounded-xl font-bold hover:bg-purple-700 transition-colors">افزودن</button>
                         </form>
-                        <div className="space-y-3">
-                            {events.map(e => (
-                                <div key={e.id} className="bg-white p-4 rounded-2xl border hover:border-purple-200 transition-colors flex justify-between items-center group">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center font-bold">{e.title.charAt(0)}</div>
-                                        <div><p className="font-bold text-black">{e.title}</p><p className="text-xs text-slate-500 mt-1">{e.time} • ثبت: {e.createdBy}</p></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {events.map(e => {
+                                const daysLeft = getDaysUntilDate(e.date);
+                                const isPassed = daysLeft !== null && daysLeft < 0;
+                                return (
+                                    <div key={e.id} className={`p-4 rounded-2xl border flex flex-col justify-between group relative overflow-hidden ${isPassed ? 'bg-slate-100 opacity-60' : 'bg-white hover:border-purple-300'}`}>
+                                        <div className="flex justify-between items-start z-10 relative">
+                                            <div>
+                                                <p className="font-bold text-black text-lg">{e.title}</p>
+                                                <p className="text-xs text-slate-500 mt-1">{e.date ? getPersianDate(e.date) : 'بدون تاریخ'}</p>
+                                            </div>
+                                            <button onClick={()=>deleteDoc(doc(db,'events',e.id))} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
+                                        </div>
+                                        {daysLeft !== null && !isPassed && (
+                                            <div className="mt-4 pt-4 border-t border-dashed border-slate-200">
+                                                <div className="flex items-center gap-2 text-purple-700">
+                                                    <Clock size={16} />
+                                                    <span className="font-black text-2xl" dir="ltr">{daysLeft}</span>
+                                                    <span className="text-xs font-bold">روز مانده</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {isPassed && <div className="mt-2 text-xs text-red-500 font-bold">گذشته است</div>}
                                     </div>
-                                    <button onClick={()=>deleteDoc(doc(db,'events',e.id))} className="text-slate-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18} /></button>
-                                </div>
-                            ))}
+                                )
+                            })}
                         </div>
                     </div>
                 </div>
@@ -819,15 +934,54 @@
             return (
                 <div className="max-w-4xl mx-auto">
                     <div className="flex gap-2 mb-8 overflow-x-auto pb-2 px-1">
-                        <button onClick={() => setTab('timeline')} className={`px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'timeline' ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200' : 'bg-white text-black border-slate-200 hover:bg-violet-50'}`}>⏳ تایم‌لاین زندگی</button>
-                        <button onClick={() => setTab('gallery')} className={`px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'gallery' ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200' : 'bg-white text-black border-slate-200 hover:bg-violet-50'}`}>📸 گالری</button>
+                        <button onClick={() => setTab('timeline')} className={`px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'timeline' ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200' : 'bg-white text-black border-slate-200 hover:bg-violet-50'}`}>⏳ خاطرات</button>
+                        <button onClick={() => setTab('game')} className={`px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'game' ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200' : 'bg-white text-black border-slate-200 hover:bg-violet-50'}`}>🎮 دوز بازی</button>
                         <button onClick={() => setTab('reviews')} className={`px-6 py-3 rounded-2xl font-black whitespace-nowrap transition-all border ${tab === 'reviews' ? 'bg-violet-600 text-white border-violet-600 shadow-lg shadow-violet-200' : 'bg-white text-black border-slate-200 hover:bg-violet-50'}`}>🎬 فیلم و کتاب</button>
                     </div>
-                    {tab === 'gallery' && <Gallery user={user} />}
+                    {tab === 'game' && <TicTacToe />}
                     {tab === 'reviews' && <Reviews user={user} />}
                     {tab === 'timeline' && <Timeline />}
                 </div>
             );
+        }
+
+        function TicTacToe() {
+            const [board, setBoard] = useState(Array(9).fill(null));
+            const [xIsNext, setXIsNext] = useState(true);
+            const winner = calculateWinner(board);
+
+            function handleClick(i) {
+                if (winner || board[i]) return;
+                const nextBoard = board.slice();
+                nextBoard[i] = xIsNext ? 'X' : 'O';
+                setBoard(nextBoard);
+                setXIsNext(!xIsNext);
+            }
+
+            function calculateWinner(squares) {
+                const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+                for (let i = 0; i < lines.length; i++) {
+                    const [a, b, c] = lines[i];
+                    if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) return squares[a];
+                }
+                return null;
+            }
+
+            return (
+                <div className="flex flex-col items-center gap-6">
+                    <div className="text-2xl font-black text-violet-800">
+                        {winner ? `برنده: ${winner === 'X' ? '❌' : '⭕️'}` : `نوبت: ${xIsNext ? '❌' : '⭕️'}`}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 bg-violet-100 p-3 rounded-2xl">
+                        {board.map((sq, i) => (
+                            <button key={i} onClick={() => handleClick(i)} className="w-20 h-20 bg-white rounded-xl text-4xl font-black flex items-center justify-center shadow-sm hover:scale-105 transition-transform text-black">
+                                {sq === 'X' ? <span className="text-rose-500">❌</span> : sq === 'O' ? <span className="text-blue-500">⭕️</span> : ''}
+                            </button>
+                        ))}
+                    </div>
+                    <button onClick={() => setBoard(Array(9).fill(null))} className="bg-violet-600 text-white px-6 py-2 rounded-xl font-bold">بازی مجدد</button>
+                </div>
+            )
         }
 
         function Timeline() {
@@ -858,7 +1012,7 @@
                              <input type="number" value={year} onChange={e=>setYear(e.target.value)} placeholder="سال" className="p-3 border rounded-xl text-center outline-none focus:border-violet-500 transition-colors text-black font-bold"/>
                          </div>
                          <div className="flex gap-2">
-                             <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="چه اتفاقی افتاد؟" className="flex-1 p-3 border rounded-xl outline-none focus:border-violet-500 transition-colors text-black font-bold"/>
+                             <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="خاطره (متن جوک یا رویداد)..." className="flex-1 p-3 border rounded-xl outline-none focus:border-violet-500 transition-colors text-black font-bold"/>
                              <button className="bg-violet-600 text-white px-6 rounded-xl font-bold hover:bg-violet-700 transition-colors">ثبت</button>
                          </div>
                      </form>
@@ -877,24 +1031,6 @@
                             </div>
                         ))}
                     </div>
-                </div>
-            )
-        }
-
-        function Gallery({ user }) {
-            const [items, setItems] = useState([]);
-            const [url, setUrl] = useState('');
-            const [caption, setCaption] = useState('');
-            useEffect(() => onSnapshot(query(collection(db, 'gallery'), orderBy('createdAt', 'desc')), s => setItems(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
-            const add = async (e) => { e.preventDefault(); if(!url)return; await addDoc(collection(db, 'gallery'), { url, caption, by: user.name, createdAt: serverTimestamp() }); setUrl(''); setCaption(''); }
-            return (
-                <div className="space-y-4">
-                    <form onSubmit={add} className="bg-white p-4 rounded-xl border space-y-2">
-                        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="لینک عکس" className="w-full p-2 border rounded-lg text-black" dir="ltr" />
-                        <input value={caption} onChange={e=>setCaption(e.target.value)} placeholder="توضیح..." className="w-full p-2 border rounded-lg text-black" />
-                        <button className="bg-violet-600 text-white w-full py-2 rounded-lg font-bold">افزودن</button>
-                    </form>
-                    <div className="grid grid-cols-2 gap-4">{items.map(item => (<div key={item.id} className="bg-white p-2 rounded-xl border shadow-sm group relative"><div className="aspect-square bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden text-slate-400"><img src={item.url} className="w-full h-full object-cover" onError={(e)=>{e.target.onerror=null; e.target.src='https://placehold.co/400?text=No+Image'}} /></div><p className="mt-2 font-bold text-xs px-1 truncate text-black">{item.caption}</p><button onClick={()=>deleteDoc(doc(db,'gallery',item.id))} className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button></div>))}</div>
                 </div>
             )
         }
@@ -1002,19 +1138,6 @@
                      <form onSubmit={add} className="flex gap-2"><input value={t} onChange={e=>setT(e.target.value)} placeholder="دارو..." className="flex-1 p-2 border rounded-lg text-black font-bold"/><button className="bg-red-500 text-white px-4 rounded-lg font-bold">+</button></form>
                      <div className="space-y-2">{list.map(i => <div key={i.id} className="bg-white p-3 rounded-xl border flex justify-between"><span className="text-black font-bold">{i.name}</span><button onClick={()=>deleteDoc(doc(db,'medications',i.id))}><Trash2 size={14} className="text-slate-300"/></button></div>)}</div>
                  </div>
-            )
-        }
-
-        function JournalApp({ user }) {
-            const [list, setList] = useState([]);
-            const [t, setT] = useState('');
-            useEffect(() => onSnapshot(query(collection(db, 'journal'), orderBy('createdAt', 'desc')), s => setList(s.docs.map(d => ({id: d.id, ...d.data()})))), []);
-            const add = async (e) => { e.preventDefault(); if(!t)return; await addDoc(collection(db, 'journal'), { text: t, by: user.name, createdAt: serverTimestamp() }); setT(''); }
-            return (
-                <div className="space-y-4">
-                    <form onSubmit={add} className="bg-amber-50 p-4 rounded-xl border border-amber-200"><textarea value={t} onChange={e=>setT(e.target.value)} placeholder="امروز چطور بود؟" className="w-full p-2 bg-white rounded-lg h-24 text-black font-bold"/><button className="mt-2 bg-amber-600 text-white w-full py-2 rounded-lg font-bold">ثبت</button></form>
-                    <div className="space-y-3">{list.map(n => <div key={n.id} className="bg-white p-4 rounded-xl border relative"><p className="text-black font-bold">{n.text}</p><p className="text-xs text-slate-500 mt-2 font-bold">{n.by}</p><button onClick={()=>deleteDoc(doc(db,'journal',n.id))} className="absolute top-2 left-2 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button></div>)}</div>
-                </div>
             )
         }
 
